@@ -486,7 +486,7 @@ export default function Products() {
                   No Products Available
                 </h3>
                 <p className="text-text-light text-base sm:text-lg mb-6">
-                  We're currently preparing our collection. Please check back
+                  We&apos;re currently preparing our collection. Please check back
                   soon for our latest creations.
                 </p>
                 <motion.button

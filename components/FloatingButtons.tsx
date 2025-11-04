@@ -56,7 +56,10 @@ export default function FloatingButtons() {
   };
 
   const handleYoutubeClick = () => {
-    window.open("https://youtube.com/@choudharyvi?si=ZlRQkWqhotZb_0LO", "_blank");
+    window.open(
+      "https://youtube.com/@choudharyvi?si=ZlRQkWqhotZb_0LO",
+      "_blank"
+    );
     setTimeout(() => setIsOpen(false), 1000);
   };
 
@@ -116,7 +119,7 @@ export default function FloatingButtons() {
             </motion.button>
 
             {/* WhatsApp */}
-            {/* <motion.button
+            <motion.button
               onClick={handleWhatsAppClick}
               className="w-12 h-12 bg-green-500 text-white rounded-full shadow-lg hover:bg-green-600 transition-all flex items-center justify-center touch-manipulation"
               whileHover={{ scale: 1.1, y: -2 }}
@@ -127,7 +130,7 @@ export default function FloatingButtons() {
               transition={{ duration: 0.2, delay: 0.2 }}
             >
               <FaWhatsapp className="text-xl" />
-            </motion.button> */}
+            </motion.button>
 
             {/* Email */}
             {/* <motion.button

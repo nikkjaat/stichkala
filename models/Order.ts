@@ -39,11 +39,13 @@ interface IOrder {
     | "delivered"
     | "cancelled";
   paymentStatus: "pending" | "paid" | "failed" | "refunded";
-  paymentMethod: "cod" | "online";
+  paymentMethod: "cod" | "online" | "upi";
   paymentDetails?: {
     razorpay_payment_id?: string;
     razorpay_order_id?: string;
     razorpay_signature?: string;
+    upi_transaction_id?: string;
+    payment_screenshot?: string;
   };
   estimatedDelivery?: Date;
   actualDelivery?: Date;
@@ -132,13 +134,15 @@ const OrderSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["cod", "online"],
+      enum: ["cod", "online", "upi"],
       default: "online",
     },
     paymentDetails: {
       razorpay_payment_id: String,
       razorpay_order_id: String,
       razorpay_signature: String,
+      upi_transaction_id: String,
+      payment_screenshot: String,
     },
     estimatedDelivery: Date,
     actualDelivery: Date,
