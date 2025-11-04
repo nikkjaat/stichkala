@@ -8,9 +8,19 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const body = await request.json();
 
-    const { orderId, razorpay_payment_id, razorpay_order_id, razorpay_signature } = body;
+    const {
+      orderId,
+      razorpay_payment_id,
+      razorpay_order_id,
+      razorpay_signature,
+    } = body;
 
-    if (!orderId || !razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+    if (
+      !orderId ||
+      !razorpay_payment_id ||
+      !razorpay_order_id ||
+      !razorpay_signature
+    ) {
       return NextResponse.json(
         { success: false, error: "Missing required payment details" },
         { status: 400 }
@@ -29,7 +39,10 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json(
-        { success: false, error: "Payment verification failed - Invalid signature" },
+        {
+          success: false,
+          error: "Payment verification failed - Invalid signature",
+        },
         { status: 400 }
       );
     }

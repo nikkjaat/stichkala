@@ -55,10 +55,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Add delivery charges if needed
-    if (totalAmount < 500) {
-      totalAmount += 50; // Delivery charges for orders below ₹500
-    }
+    // REMOVED THE DUPLICATE DELIVERY CHARGES - THIS WAS CAUSING EXTRA ₹50
+    // if (totalAmount < 500) {
+    //   totalAmount += 50; // Delivery charges for orders below ₹500
+    // }
 
     const order = new Order({
       ...body,
