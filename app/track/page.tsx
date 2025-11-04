@@ -293,7 +293,7 @@ export default function TrackOrderPage() {
                 }`
               );
               window.open(
-                `https://wa.me/+919760258097?text=${message}`,
+                `https://wa.me/${process.env.NEXT_PUBLIC_WHATSAPP_NUMBER}?text=${message}`,
                 "_blank"
               );
             }}

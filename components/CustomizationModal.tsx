@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -261,7 +259,9 @@ Address: ${formData.customerInfo.address.street}, ${
             </p>
             <div className="space-y-2 mb-4">
               <a
-                href={`https://wa.me/+919760258097?text=${encodeURIComponent(
+                href={`https://wa.me/${
+                  process.env.NEXT_PUBLIC_WHATSAPP_NUMBER
+                }?text=${encodeURIComponent(
                   `Hi! I have placed order ${orderNumber}. I have completed the payment of ₹${calculateTotal()} via UPI. Transaction ID: [Your Transaction ID]`
                 )}`}
                 target="_blank"

@@ -45,7 +45,10 @@ export default function FloatingButtons() {
     const message = encodeURIComponent(
       "Hi! I'm interested in your handcrafted gifts. Can you help me with a custom order?"
     );
-    window.open(`https://wa.me/+919760258097?text=${message}`, "_blank");
+    window.open(
+      `https://wa.me/${process.env.NEXT_PUBLIC_WHATSAPP_NUMBER}?text=${message}`,
+      "_blank"
+    );
     // Don't close immediately on mobile - let user see the action
     setTimeout(() => setIsOpen(false), 1000);
   };
