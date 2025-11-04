@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   FaTimes,
   FaWhatsapp,
@@ -63,6 +63,7 @@ export default function CustomizationModal({
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
   const [copied, setCopied] = useState(false);
+  const [sameAsPhone, setSameAsPhone] = useState(true);
 
   // UPI Payment Details
   const upiDetails = {
@@ -71,6 +72,26 @@ export default function CustomizationModal({
     bankName: "State Bank of India",
     accountName: "Vishakha Chaudhary",
   };
+
+  // Auto-fill WhatsApp number when phone number changes
+  useEffect(() => {
+    if (sameAsPhone && formData.customerInfo.phone) {
+      setFormData((prev) => ({
+        ...prev,
+        customerInfo: {
+          ...prev.customerInfo,
+          whatsappNumber: prev.customerInfo.phone,
+        },
+      }));
+    }
+  }, [formData.customerInfo.phone, sameAsPhone]);
+
+  // Reset sameAsPhone when user manually changes WhatsApp number
+  useEffect(() => {
+    if (formData.customerInfo.whatsappNumber !== formData.customerInfo.phone) {
+      setSameAsPhone(false);
+    }
+  }, [formData.customerInfo.whatsappNumber, formData.customerInfo.phone]);
 
   const handleInputChange = (
     section: string,
@@ -108,6 +129,19 @@ export default function CustomizationModal({
       setFormData((prev) => ({
         ...prev,
         [field]: value,
+      }));
+    }
+  };
+
+  const handleSameAsPhoneChange = (checked: boolean) => {
+    setSameAsPhone(checked);
+    if (checked && formData.customerInfo.phone) {
+      setFormData((prev) => ({
+        ...prev,
+        customerInfo: {
+          ...prev.customerInfo,
+          whatsappNumber: prev.customerInfo.phone,
+        },
       }));
     }
   };
@@ -627,7 +661,7 @@ Address: ${formData.customerInfo.address.street}, ${
 
                     <div>
                       <label className="block text-sm font-medium text-text-dark mb-2">
-                        WhatsApp
+                        WhatsApp *
                       </label>
                       <input
                         type="tel"
@@ -639,10 +673,34 @@ Address: ${formData.customerInfo.address.street}, ${
                             e.target.value
                           )
                         }
-                        className="w-full px-3 py-2.5 text-sm rounded-xl border-2 border-gray-200 focus:border-rose focus:outline-none transition-colors"
+                        disabled={sameAsPhone}
+                        className={`w-full px-3 py-2.5 text-sm rounded-xl border-2 focus:outline-none transition-colors ${
+                          sameAsPhone
+                            ? "bg-gray-100 border-gray-200 text-gray-500"
+                            : "border-gray-200 focus:border-rose"
+                        }`}
                         required
                       />
                     </div>
+                  </div>
+
+                  {/* Same as Phone Checkbox */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      id="sameAsPhone"
+                      checked={sameAsPhone}
+                      onChange={(e) =>
+                        handleSameAsPhoneChange(e.target.checked)
+                      }
+                      className="w-4 h-4 text-rose border-gray-300 rounded focus:ring-rose"
+                    />
+                    <label
+                      htmlFor="sameAsPhone"
+                      className="text-sm text-text-dark"
+                    >
+                      WhatsApp number is same as phone number
+                    </label>
                   </div>
 
                   <div>
