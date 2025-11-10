@@ -67,7 +67,7 @@ export default function CustomizationModal({
 
   // UPI Payment Details
   const upiDetails = {
-    upiId: "",
+    upiId: "vishakha-c@ptyes",
     qrCode: "/qr-code.jpg",
     bankName: "State Bank of India",
     accountName: "Vishakha Chaudhary",
