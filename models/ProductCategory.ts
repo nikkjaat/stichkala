@@ -7,7 +7,7 @@ export interface IProductCategory {
   sortOrder: number;
 }
 
-const ProductCategorySchema = new mongoose.Schema<IProductCategory>(
+const ProductCategorySchema = new mongoose.Schema(
   {
     slug: { type: String, required: true, unique: true, index: true },
     label: { type: String, required: true, trim: true },

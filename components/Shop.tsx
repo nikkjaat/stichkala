@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import CustomizationModal from "./CustomizationModal";
@@ -19,7 +20,127 @@ interface Product {
   };
 }
 
+const SHOP_SAMPLE_PRODUCTS: Product[] = [
+  {
+    _id: "1",
+    name: "Custom Name Embroidery Hoop",
+    category: "embroidery",
+    description:
+      "Beautiful personalized embroidery hoop with your chosen name and design",
+    basePrice: 899,
+    images: [
+      "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
+    ],
+    customizable: true,
+    options: {
+      colors: ["Pink", "Blue", "Green", "Purple", "Yellow"],
+      sizes: ["6 inch", "8 inch", "10 inch"],
+      materials: ["Cotton", "Linen", "Canvas"],
+    },
+  },
+  {
+    _id: "2",
+    name: "Floral Quote Embroidery",
+    category: "embroidery",
+    description: "Delicate floral design with inspirational quotes",
+    basePrice: 1299,
+    images: [
+      "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
+    ],
+    customizable: true,
+    options: {
+      colors: ["Pastel Pink", "Lavender", "Mint Green", "Peach"],
+      sizes: ["8 inch", "10 inch", "12 inch"],
+      materials: ["Cotton", "Linen"],
+    },
+  },
+  {
+    _id: "3",
+    name: "Watercolor Hanky Set",
+    category: "hanky",
+    description:
+      "Set of 3 hand-painted cotton hankies with watercolor designs",
+    basePrice: 699,
+    images: [
+      "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
+    ],
+    customizable: true,
+    options: {
+      colors: ["Floral Mix", "Ocean Blues", "Sunset Hues", "Garden Greens"],
+      sizes: ["Standard"],
+      materials: ["Cotton", "Muslin"],
+    },
+  },
+  {
+    _id: "4",
+    name: "Personalized Initial Hanky",
+    category: "hanky",
+    description: "Elegant hanky with hand-painted initial and floral border",
+    basePrice: 399,
+    images: [
+      "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
+    ],
+    customizable: true,
+    options: {
+      colors: ["Rose Gold", "Silver", "Gold", "Lavender"],
+      sizes: ["Standard"],
+      materials: ["Cotton", "Silk"],
+    },
+  },
+  {
+    _id: "5",
+    name: "Cute Bow Hair Clips Set",
+    category: "accessories",
+    description: "Set of 5 adorable handmade bow clips in matching colors",
+    basePrice: 299,
+    images: [
+      "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
+    ],
+    customizable: true,
+    options: {
+      colors: [
+        "Pastel Mix",
+        "Bright Colors",
+        "Neutral Tones",
+        "Floral Prints",
+      ],
+      sizes: ["Small", "Medium", "Large"],
+      materials: ["Cotton", "Satin", "Velvet"],
+    },
+  },
+  {
+    _id: "6",
+    name: "Scrunchie Collection",
+    category: "accessories",
+    description: "Set of 3 handmade scrunchies in coordinating fabrics",
+    basePrice: 199,
+    images: [
+      "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
+    ],
+    customizable: true,
+    options: {
+      colors: [
+        "Spring Florals",
+        "Vintage Prints",
+        "Solid Pastels",
+        "Boho Patterns",
+      ],
+      sizes: ["Regular", "Mini"],
+      materials: ["Cotton", "Silk", "Chiffon"],
+    },
+  },
+];
+
 export default function Shop() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [categories, setCategories] = useState<
+    { id: string; name: string; emoji: string }[]
+  >([{ id: "all", name: "All Products", emoji: "✨" }]);
+
   useEffect(() => {
     document.title = "StichKala - Handcrafted Gifts";
     document
@@ -29,14 +150,6 @@ export default function Shop() {
         "Beautiful handmade gifts including personalised embroidery hoops, hand-painted hankies, and cute hair accessories. Each piece crafted with love."
       );
   }, []);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const [categories, setCategories] = useState<
-    { id: string; name: string; emoji: string }[]
-  >([{ id: "all", name: "All Products", emoji: "✨" }]);
 
   useEffect(() => {
     void fetch("/api/product-categories")
@@ -64,118 +177,6 @@ export default function Shop() {
     }
   }, [categories, selectedCategory]);
 
-  // Sample products data (in real app, this would come from API)
-  const sampleProducts: Product[] = [
-    {
-      _id: "1",
-      name: "Custom Name Embroidery Hoop",
-      category: "embroidery",
-      description:
-        "Beautiful personalized embroidery hoop with your chosen name and design",
-      basePrice: 899,
-      images: [
-        "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
-      ],
-      customizable: true,
-      options: {
-        colors: ["Pink", "Blue", "Green", "Purple", "Yellow"],
-        sizes: ["6 inch", "8 inch", "10 inch"],
-        materials: ["Cotton", "Linen", "Canvas"],
-      },
-    },
-    {
-      _id: "2",
-      name: "Floral Quote Embroidery",
-      category: "embroidery",
-      description: "Delicate floral design with inspirational quotes",
-      basePrice: 1299,
-      images: [
-        "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
-      ],
-      customizable: true,
-      options: {
-        colors: ["Pastel Pink", "Lavender", "Mint Green", "Peach"],
-        sizes: ["8 inch", "10 inch", "12 inch"],
-        materials: ["Cotton", "Linen"],
-      },
-    },
-    {
-      _id: "3",
-      name: "Watercolor Hanky Set",
-      category: "hanky",
-      description:
-        "Set of 3 hand-painted cotton hankies with watercolor designs",
-      basePrice: 699,
-      images: [
-        "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
-      ],
-      customizable: true,
-      options: {
-        colors: ["Floral Mix", "Ocean Blues", "Sunset Hues", "Garden Greens"],
-        sizes: ["Standard"],
-        materials: ["Cotton", "Muslin"],
-      },
-    },
-    {
-      _id: "4",
-      name: "Personalized Initial Hanky",
-      category: "hanky",
-      description: "Elegant hanky with hand-painted initial and floral border",
-      basePrice: 399,
-      images: [
-        "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
-      ],
-      customizable: true,
-      options: {
-        colors: ["Rose Gold", "Silver", "Gold", "Lavender"],
-        sizes: ["Standard"],
-        materials: ["Cotton", "Silk"],
-      },
-    },
-    {
-      _id: "5",
-      name: "Cute Bow Hair Clips Set",
-      category: "accessories",
-      description: "Set of 5 adorable handmade bow clips in matching colors",
-      basePrice: 299,
-      images: [
-        "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
-      ],
-      customizable: true,
-      options: {
-        colors: [
-          "Pastel Mix",
-          "Bright Colors",
-          "Neutral Tones",
-          "Floral Prints",
-        ],
-        sizes: ["Small", "Medium", "Large"],
-        materials: ["Cotton", "Satin", "Velvet"],
-      },
-    },
-    {
-      _id: "6",
-      name: "Scrunchie Collection",
-      category: "accessories",
-      description: "Set of 3 handmade scrunchies in coordinating fabrics",
-      basePrice: 199,
-      images: [
-        "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
-      ],
-      customizable: true,
-      options: {
-        colors: [
-          "Spring Florals",
-          "Vintage Prints",
-          "Solid Pastels",
-          "Boho Patterns",
-        ],
-        sizes: ["Regular", "Mini"],
-        materials: ["Cotton", "Silk", "Chiffon"],
-      },
-    },
-  ];
-
   useEffect(() => {
     const fetchProducts = async () => {
       try {
@@ -183,18 +184,17 @@ export default function Shop() {
         const data = await response.json();
 
         if (data.success && data.products && data.products.length > 0) {
-          // Ensure images is always an array
           const productsWithImages = data.products.map((product: Product) => ({
             ...product,
             images: Array.isArray(product.images) ? product.images : [],
           }));
           setProducts(productsWithImages);
         } else {
-          setProducts(sampleProducts);
+          setProducts(SHOP_SAMPLE_PRODUCTS);
         }
       } catch (error) {
         console.error("Error fetching products:", error);
-        setProducts(sampleProducts);
+        setProducts(SHOP_SAMPLE_PRODUCTS);
       } finally {
         setLoading(false);
       }
@@ -246,7 +246,6 @@ export default function Shop() {
             Each piece is lovingly handmade with attention to detail and care
           </p>
 
-          {/* Category Filter */}
           <div className="flex flex-wrap justify-center gap-4 mb-12">
             {categories.map((category) => (
               <motion.button
@@ -267,7 +266,6 @@ export default function Shop() {
           </div>
         </motion.div>
 
-        {/* Products Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredProducts.map((product, index) => (
             <motion.div
@@ -279,10 +277,12 @@ export default function Shop() {
               className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all"
             >
               <div className="relative h-64 bg-gradient-soft">
-                <img
+                <Image
                   src={product.images?.[0] || "/placeholder.png"}
                   alt={product.name}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  className="object-cover"
                 />
                 <div className="absolute top-4 right-4 bg-white bg-opacity-90 px-3 py-1 rounded-full text-sm font-medium text-text-dark">
                   ₹{product.basePrice}
@@ -341,7 +341,6 @@ export default function Shop() {
         )}
       </div>
 
-      {/* Customization Modal */}
       {selectedProduct && (
         <CustomizationModal
           product={selectedProduct}

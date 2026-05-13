@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import QRCode from "qrcode";
 import {
@@ -792,11 +793,15 @@ export default function CustomizationModal({
 
                 <div className="bg-gray-50 rounded-xl p-4 mb-4">
                   <div className="flex items-start gap-3 mb-3">
-                    <img
-                      src={product.images[0]}
-                      alt={product.name}
-                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                    />
+                    <div className="relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100">
+                      <Image
+                        src={product.images[0] || "/logo.png"}
+                        alt={product.name}
+                        fill
+                        className="object-cover"
+                        sizes="64px"
+                      />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-text-dark text-sm truncate">
                         {product.name}
@@ -850,12 +855,14 @@ export default function CustomizationModal({
 
                   <div className="flex flex-col items-center mb-4">
                     {upiQrDataUrl ? (
-                      <div className="bg-white p-3 rounded-lg border-2 border-gray-200 mb-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
+                      <div className="relative w-48 h-48 bg-white p-3 rounded-lg border-2 border-gray-200 mb-3">
+                        <Image
                           src={upiQrDataUrl}
                           alt="UPI payment QR code"
-                          className="w-48 h-48 object-contain"
+                          fill
+                          unoptimized
+                          className="object-contain p-1"
+                          sizes="192px"
                         />
                       </div>
                     ) : (

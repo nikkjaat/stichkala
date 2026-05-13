@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import AdminChatPanel from "@/components/AdminChatPanel";
 import { motion, AnimatePresence } from "framer-motion";
@@ -631,16 +632,18 @@ export default function AdminPage() {
                       >
                         <div className="flex gap-4">
                           {/* Product Image */}
-                          <div className="flex-shrink-0">
-                            <img
+                          <div
+                            className="flex-shrink-0 relative w-16 h-16 sm:w-20 sm:h-20 rounded-lg border overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => handleOrderImageClick(order, e)}
+                            role="presentation"
+                          >
+                            <Image
                               src={getProductImage(order)}
                               alt="Product"
-                              className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-lg border cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={(e) => handleOrderImageClick(order, e)}
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = "";
-                              }}
+                              fill
+                              unoptimized
+                              className="object-cover"
+                              sizes="80px"
                             />
                           </div>
 
@@ -783,14 +786,16 @@ export default function AdminPage() {
                                             }}
                                             className="relative block rounded-lg border-2 border-white shadow-md overflow-hidden focus:outline-none focus:ring-2 focus:ring-rose"
                                           >
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
+                                            <Image
                                               src={
                                                 order.paymentDetails
-                                                  .payment_screenshot
+                                                  .payment_screenshot!
                                               }
                                               alt="Payment proof thumbnail"
-                                              className="max-h-44 w-auto object-contain bg-black/5 hover:opacity-95 transition-opacity"
+                                              width={400}
+                                              height={176}
+                                              unoptimized
+                                              className="max-h-44 w-auto object-contain bg-black/5 hover:opacity-95 transition-opacity mx-auto"
                                             />
                                           </button>
                                           <p className="text-xs text-text-light mt-1">
@@ -871,17 +876,16 @@ export default function AdminPage() {
                                     >
                                       <div className="flex gap-3">
                                         {/* Item Image */}
-                                        <img
-                                          src={getProductImage(order)}
-                                          alt={item.productName}
-                                          className="w-16 h-16 object-cover rounded-lg border  hover:opacity-80 transition-opacity"
-                                          onError={(e) => {
-                                            const target =
-                                              e.target as HTMLImageElement;
-                                            target.src =
-                                              "/api/placeholder/80/80";
-                                          }}
-                                        />
+                                        <div className="relative w-16 h-16 flex-shrink-0 rounded-lg border overflow-hidden">
+                                          <Image
+                                            src={getProductImage(order)}
+                                            alt={item.productName}
+                                            fill
+                                            unoptimized
+                                            className="object-cover hover:opacity-80 transition-opacity"
+                                            sizes="64px"
+                                          />
+                                        </div>
                                         <div className="flex-1">
                                           <div className="flex justify-between items-start mb-2">
                                             <h5 className="font-medium text-text-dark text-sm">
@@ -1041,16 +1045,20 @@ export default function AdminPage() {
                   {product.images &&
                     product.images.length > 0 &&
                     product.images[0] && (
-                      <img
-                        src={product?.images[0]}
-                        alt={product.name}
-                        className="w-full h-40 sm:h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                      <div
+                        className="relative w-full h-40 sm:h-48 cursor-pointer"
                         onClick={() => setSelectedProductDetail(product)}
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = "/api/placeholder/400/300";
-                        }}
-                      />
+                        role="presentation"
+                      >
+                        <Image
+                          src={product?.images[0]}
+                          alt={product.name}
+                          fill
+                          unoptimized
+                          className="object-cover hover:opacity-90 transition-opacity"
+                          sizes="(max-width: 640px) 100vw, 33vw"
+                        />
+                      </div>
                     )}
                   {(!product.images ||
                     product.images.length === 0 ||
@@ -1181,13 +1189,19 @@ export default function AdminPage() {
             >
               <FiX size={24} strokeWidth={2.5} className="block" />
             </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={screenshotLightbox}
-              alt="Payment screenshot"
-              className="max-h-[min(92vh,920px)] max-w-full object-contain rounded-lg shadow-2xl"
+            <div
+              className="relative max-h-[min(92vh,920px)] max-w-full w-full flex justify-center"
               onClick={(e) => e.stopPropagation()}
-            />
+            >
+              <Image
+                src={screenshotLightbox}
+                alt="Payment screenshot"
+                width={1200}
+                height={920}
+                unoptimized
+                className="max-h-[min(92vh,920px)] max-w-full w-auto h-auto object-contain rounded-lg shadow-2xl"
+              />
+            </div>
             <p className="mt-4 text-center text-xs text-white/70">
               Tap the X or outside the image to close
             </p>
@@ -1262,15 +1276,14 @@ function OrderProductsPopup({ order, onClose }: OrderProductsPopupProps) {
               >
                 <div className="flex gap-4">
                   {/* Product Image */}
-                  <div className="flex-shrink-0">
-                    <img
+                  <div className="flex-shrink-0 relative w-20 h-20 sm:w-24 sm:h-24 rounded-lg border overflow-hidden">
+                    <Image
                       src={getProductImageForItem(item)}
                       alt={item.productName}
-                      className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = "/api/placeholder/120/120";
-                      }}
+                      fill
+                      unoptimized
+                      className="object-cover"
+                      sizes="96px"
                     />
                   </div>
 
@@ -1457,15 +1470,14 @@ function ProductDetailModal({
             <div className="space-y-4">
               {product.images && product.images.length > 0 ? (
                 <>
-                  <div className="relative rounded-xl overflow-hidden bg-gray-100">
-                    <img
+                  <div className="relative rounded-xl overflow-hidden bg-gray-100 h-64 sm:h-80">
+                    <Image
                       src={product.images[currentImageIndex]}
                       alt={`${product.name} - Image ${currentImageIndex + 1}`}
-                      className="w-full h-64 sm:h-80 object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = "/api/placeholder/400/300";
-                      }}
+                      fill
+                      unoptimized
+                      className="object-cover"
+                      sizes="(max-width: 1024px) 100vw, 50vw"
                     />
                     {product.images.length > 1 && (
                       <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/60 text-white px-3 py-1 rounded-full text-sm">
@@ -1478,21 +1490,21 @@ function ProductDetailModal({
                       {product.images.map((img, idx) => (
                         <button
                           key={idx}
+                          type="button"
                           onClick={() => setCurrentImageIndex(idx)}
-                          className={`relative rounded-lg overflow-hidden border-2 transition-all ${
+                          className={`relative h-16 w-full rounded-lg overflow-hidden border-2 transition-all ${
                             idx === currentImageIndex
                               ? "border-rose"
                               : "border-gray-200 hover:border-gray-300"
                           }`}
                         >
-                          <img
+                          <Image
                             src={img}
                             alt={`Thumbnail ${idx + 1}`}
-                            className="w-full h-16 object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.src = "/api/placeholder/100/100";
-                            }}
+                            fill
+                            unoptimized
+                            className="object-cover"
+                            sizes="80px"
                           />
                         </button>
                       ))}
@@ -2148,11 +2160,16 @@ function ProductModal({
                       </div>
 
                       {/* Image */}
-                      <img
-                        src={img}
-                        alt={`Product ${index + 1}`}
-                        className="w-full h-24 object-cover rounded-md"
-                      />
+                      <div className="relative w-full h-24 rounded-md overflow-hidden">
+                        <Image
+                          src={img}
+                          alt={`Product ${index + 1}`}
+                          fill
+                          unoptimized
+                          className="object-cover"
+                          sizes="120px"
+                        />
+                      </div>
 
                       {/* Drag Handle */}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-200 rounded-md flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">

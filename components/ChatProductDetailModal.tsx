@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -137,11 +138,13 @@ export default function ChatProductDetailModal({
                 <div className="space-y-2">
                   <div className="relative rounded-xl overflow-hidden bg-gray-100 aspect-[4/3]">
                     {mainImg && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <Image
                         src={mainImg}
-                        alt=""
-                        className="w-full h-full object-cover"
+                        alt={product.name || "Product"}
+                        fill
+                        unoptimized
+                        className="object-cover"
+                        sizes="(max-width: 480px) 100vw, 400px"
                       />
                     )}
                     {images.length > 1 && (
@@ -180,15 +183,17 @@ export default function ChatProductDetailModal({
                           key={i}
                           type="button"
                           onClick={() => setImgIdx(i)}
-                          className={`w-12 h-12 rounded-lg overflow-hidden border-2 ${
+                          className={`relative w-12 h-12 rounded-lg overflow-hidden border-2 ${
                             i === imgIdx ? "border-rose" : "border-transparent"
                           }`}
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
+                          <Image
                             src={src}
                             alt=""
-                            className="w-full h-full object-cover"
+                            fill
+                            unoptimized
+                            className="object-cover"
+                            sizes="48px"
                           />
                         </button>
                       ))}

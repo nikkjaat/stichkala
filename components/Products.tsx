@@ -1,7 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { GiSewingNeedle, GiLipstick } from "react-icons/gi";
 import { GiHairStrands } from "react-icons/gi";
 import { X, ChevronLeft, ChevronRight, ArrowRight, MessageCircle } from "lucide-react";
@@ -45,11 +46,48 @@ export default function Products() {
   const fullScreenRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
+  const handleCloseModal = useCallback(() => {
+    setSelectedProduct(null);
+    setModalImageIndex(0);
+    setFullScreenImageIndex(0);
+    setIsFullScreenImage(false);
+    if (modalScrollIntervalRef.current) {
+      clearInterval(modalScrollIntervalRef.current);
+    }
+  }, []);
+
+  const handleCloseFullScreen = useCallback(() => {
+    setIsFullScreenImage(false);
+    setModalImageIndex(fullScreenImageIndex);
+    if (selectedProduct && selectedProduct.images.length > 1) {
+      modalScrollIntervalRef.current = setInterval(() => {
+        setModalImageIndex(
+          (prev) => (prev + 1) % selectedProduct!.images.length
+        );
+      }, 3000);
+    }
+  }, [fullScreenImageIndex, selectedProduct]);
+
+  const handleNextFullScreenImage = useCallback(() => {
+    if (!selectedProduct) return;
+    setFullScreenImageIndex(
+      (idx) => (idx + 1) % selectedProduct.images.length
+    );
+  }, [selectedProduct]);
+
+  const handlePrevFullScreenImage = useCallback(() => {
+    if (!selectedProduct) return;
+    setFullScreenImageIndex((idx) =>
+      idx === 0 ? selectedProduct.images.length - 1 : idx - 1
+    );
+  }, [selectedProduct]);
+
   // Auto-scroll images for products with multiple images in grid
   useEffect(() => {
+    const intervalMap = scrollIntervalRef.current;
     featuredProducts.forEach((product) => {
       if (product.images.length > 1) {
-        scrollIntervalRef.current[product._id] = setInterval(() => {
+        intervalMap[product._id] = setInterval(() => {
           setCurrentImageIndex((prev) => ({
             ...prev,
             [product._id]:
@@ -60,7 +98,7 @@ export default function Products() {
     });
 
     return () => {
-      Object.values(scrollIntervalRef.current).forEach((interval) => {
+      Object.values(intervalMap).forEach((interval) => {
         clearInterval(interval);
       });
     };
@@ -130,7 +168,7 @@ export default function Products() {
         document.body.style.overflow = "unset";
       }
     };
-  }, [selectedProduct, isFullScreenImage]);
+  }, [selectedProduct, isFullScreenImage, handleCloseModal]);
 
   // Close full screen image when clicking outside or pressing Escape
   useEffect(() => {
@@ -163,7 +201,7 @@ export default function Products() {
         document.body.style.overflow = "unset";
       }
     };
-  }, [isFullScreenImage, selectedProduct]);
+  }, [isFullScreenImage, selectedProduct, handleCloseFullScreen]);
 
   // Keyboard navigation for full screen
   useEffect(() => {
@@ -184,7 +222,12 @@ export default function Products() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isFullScreenImage, selectedProduct, fullScreenImageIndex]);
+  }, [
+    isFullScreenImage,
+    selectedProduct,
+    handleNextFullScreenImage,
+    handlePrevFullScreenImage,
+  ]);
 
   const handleImageHover = (productId: string, enter: boolean) => {
     if (enter) {
@@ -215,17 +258,6 @@ export default function Products() {
     }
   };
 
-  const handleCloseModal = () => {
-    setSelectedProduct(null);
-    setModalImageIndex(0);
-    setFullScreenImageIndex(0);
-    setIsFullScreenImage(false);
-
-    if (modalScrollIntervalRef.current) {
-      clearInterval(modalScrollIntervalRef.current);
-    }
-  };
-
   const handleNextImage = () => {
     if (selectedProduct) {
       const newIndex = (modalImageIndex + 1) % selectedProduct.images.length;
@@ -243,7 +275,6 @@ export default function Products() {
     }
   };
 
-  // Full screen image handlers
   const handleOpenFullScreen = (index: number) => {
     setFullScreenImageIndex(index);
     setIsFullScreenImage(true);
@@ -251,40 +282,6 @@ export default function Products() {
     // Stop auto-scroll when opening full screen
     if (modalScrollIntervalRef.current) {
       clearInterval(modalScrollIntervalRef.current);
-    }
-  };
-
-  const handleCloseFullScreen = () => {
-    setIsFullScreenImage(false);
-
-    // Sync modal image with the current full screen image
-    setModalImageIndex(fullScreenImageIndex);
-
-    // Resume auto-scroll if there are multiple images
-    if (selectedProduct && selectedProduct.images.length > 1) {
-      modalScrollIntervalRef.current = setInterval(() => {
-        setModalImageIndex(
-          (prev) => (prev + 1) % selectedProduct.images.length
-        );
-      }, 3000);
-    }
-  };
-
-  const handleNextFullScreenImage = () => {
-    if (selectedProduct) {
-      const newIndex =
-        (fullScreenImageIndex + 1) % selectedProduct.images.length;
-      setFullScreenImageIndex(newIndex);
-    }
-  };
-
-  const handlePrevFullScreenImage = () => {
-    if (selectedProduct) {
-      const newIndex =
-        fullScreenImageIndex === 0
-          ? selectedProduct.images.length - 1
-          : fullScreenImageIndex - 1;
-      setFullScreenImageIndex(newIndex);
     }
   };
 
@@ -402,10 +399,12 @@ export default function Products() {
                           handleImageHover(product._id, false)
                         }
                       >
-                        <img
+                        <Image
                           src={images[currentIndex] || "/placeholder.png"}
                           alt={product.name}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          fill
+                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
                         />
 
                         {/* Price Badge */}
@@ -835,16 +834,19 @@ export default function Products() {
                     <button
                       key={index}
                       onClick={() => setFullScreenImageIndex(index)}
-                      className={`flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${
+                      type="button"
+                      className={`relative flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${
                         index === fullScreenImageIndex
                           ? "border-white border-opacity-80"
                           : "border-transparent opacity-60 hover:opacity-80"
                       }`}
                     >
-                      <img
+                      <Image
                         src={image}
                         alt={`Thumbnail ${index + 1}`}
-                        className="w-full h-full object-cover"
+                        fill
+                        sizes="48px"
+                        className="object-cover"
                       />
                     </button>
                   ))}

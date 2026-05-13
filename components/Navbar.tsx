@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { HiMenu, HiX } from "react-icons/hi";
 
@@ -73,12 +74,16 @@ export default function Navbar() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <img
-              style={{objectFit: 'contain', width:'70px', height:'70px'}}
-                src="/logo.png"
-                alt="StickKala logo"
-                className="h-10 w-15 sm:h-12 sm:w-12"
-              />
+              <div className="relative h-10 w-[70px] sm:h-12 sm:w-14 shrink-0">
+                <Image
+                  src="/logo.png"
+                  alt="StichKala logo"
+                  fill
+                  className="object-contain"
+                  sizes="70px"
+                  priority
+                />
+              </div>
               <span className="font-serif text-xl sm:text-2xl md:text-3xl text-text-dark ml-2 sm:ml-3">
                 StichKala
               </span>

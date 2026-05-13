@@ -3,8 +3,9 @@ import connectDB from "@/lib/mongodb";
 import Order from "@/models/Order";
 import Product from "@/models/Product";
 import ChatThread from "@/models/ChatThread";
+import type { IChatThread } from "@/models/ChatThread";
 import Razorpay from "razorpay";
-import mongoose from "mongoose";
+import mongoose, { type HydratedDocument } from "mongoose";
 import {
   sendAdminNewOrderAlert,
   sendOrderConfirmation,
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     // Calculate total amount
     let totalAmount = 0;
-    let threadForChat: Awaited<ReturnType<typeof ChatThread.findById>> = null;
+    let threadForChat: HydratedDocument<IChatThread> | null = null;
 
     if (isChatNegotiatedUpi) {
       threadForChat = await ChatThread.findById(chatThreadId);
