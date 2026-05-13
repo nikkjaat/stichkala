@@ -2,7 +2,7 @@ import mongoose, { Model, Document } from "mongoose";
 
 interface IProduct extends Document {
   name: string;
-  category: "embroidery" | "hanky" | "accessories";
+  category: string;
   description: string;
   basePrice: number;
   images: string[];
@@ -25,7 +25,7 @@ const ProductSchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      enum: ["embroidery", "hanky", "accessories"],
+      maxlength: 80,
     },
     description: {
       type: String,

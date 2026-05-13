@@ -2,8 +2,10 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import CustomizationModal from "./CustomizationModal";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
+import { useCustomerChat } from "@/components/CustomerChat";
 
 interface Product {
   _id: string;
@@ -21,6 +23,8 @@ interface Product {
 }
 
 export default function AllProducts() {
+  const searchParams = useSearchParams();
+  const chat = useCustomerChat();
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -38,12 +42,35 @@ export default function AllProducts() {
   const modalRef = useRef<HTMLDivElement>(null);
   const fullScreenRef = useRef<HTMLDivElement>(null);
 
-  const categories = [
-    { id: "all", name: "All Products", emoji: "✨" },
-    { id: "embroidery", name: "Embroidery Hoops", emoji: "🧵" },
-    { id: "hanky", name: "Hand-painted Hankies", emoji: "🌈" },
-    { id: "accessories", name: "Hair Accessories", emoji: "🎀" },
-  ];
+  const [categories, setCategories] = useState<
+    { id: string; name: string; emoji: string }[]
+  >([{ id: "all", name: "All Products", emoji: "✨" }]);
+
+  useEffect(() => {
+    void fetch("/api/product-categories")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.success || !Array.isArray(j.categories)) return;
+        setCategories([
+          { id: "all", name: "All Products", emoji: "✨" },
+          ...j.categories.map(
+            (c: { slug: string; label: string; emoji?: string }) => ({
+              id: c.slug,
+              name: c.label,
+              emoji: c.emoji || "📦",
+            })
+          ),
+        ]);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (selectedCategory === "all") return;
+    if (!categories.some((c) => c.id === selectedCategory)) {
+      setSelectedCategory("all");
+    }
+  }, [categories, selectedCategory]);
 
   useEffect(() => {
     document.title = "All Products - Handcrafted Gifts";
@@ -356,6 +383,21 @@ export default function AllProducts() {
     handleCloseModal();
   };
 
+  const handleChatAboutProduct = async () => {
+    if (!selectedProduct) return;
+    const ok = await chat?.sendProductLinkInChatSilent?.({
+      _id: selectedProduct._id,
+      name: selectedProduct.name,
+    });
+    if (ok) {
+      handleCloseModal();
+    } else {
+      alert(
+        "Could not send this product to chat. Try the floating chat button, then use Chat again."
+      );
+    }
+  };
+
   // Full screen image handlers
   const handleOpenFullScreen = (index: number) => {
     setFullScreenImageIndex(index);
@@ -435,6 +477,17 @@ export default function AllProducts() {
     fetchProducts();
   }, []);
 
+  const productHighlightId = searchParams.get("product");
+  useEffect(() => {
+    if (!productHighlightId || loading) return;
+    const t = window.setTimeout(() => {
+      document
+        .getElementById(`product-card-${productHighlightId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [productHighlightId, loading, products]);
+
   const filteredProducts =
     selectedCategory === "all"
       ? products
@@ -509,6 +562,7 @@ export default function AllProducts() {
               return (
                 <motion.div
                   key={product._id}
+                  id={`product-card-${product._id}`}
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
@@ -558,6 +612,21 @@ export default function AllProducts() {
 
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300" />
+
+                    <button
+                      type="button"
+                      aria-label={`Chat about ${product.name}`}
+                      className="absolute bottom-2 right-2 z-[5] w-9 h-9 rounded-full bg-white/95 text-rose shadow-md flex items-center justify-center hover:bg-rose hover:text-white transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        chat?.offerProductChat({
+                          _id: product._id,
+                          name: product.name,
+                        });
+                      }}
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </button>
                   </div>
 
                   {/* Product Info */}
@@ -786,10 +855,11 @@ export default function AllProducts() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-3 sm:pt-4">
                     <motion.button
+                      type="button"
                       onClick={() => handleCustomize(selectedProduct)}
-                      className="flex-1 px-4 py-3 sm:px-6 sm:py-4 bg-rose text-white rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
+                      className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-rose text-white rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -798,8 +868,19 @@ export default function AllProducts() {
                         : "Order Now"}
                     </motion.button>
                     <motion.button
+                      type="button"
+                      onClick={() => void handleChatAboutProduct()}
+                      className="w-full px-4 py-3 sm:px-6 sm:py-4 border-2 border-rose text-rose bg-white rounded-xl sm:rounded-2xl font-medium hover:bg-rose/5 transition-all text-sm sm:text-base inline-flex items-center justify-center gap-2"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <MessageCircle className="w-5 h-5 shrink-0" />
+                      Chat
+                    </motion.button>
+                    <motion.button
+                      type="button"
                       onClick={handleCloseModal}
-                      className="flex-1 px-4 py-3 sm:px-6 sm:py-4 bg-gray-100 text-text-dark rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
+                      className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-gray-100 text-text-dark rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >

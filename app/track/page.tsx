@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { getInstagramDmUrl } from "@/lib/siteContact";
 
@@ -22,14 +23,16 @@ interface OrderStatus {
   trackingNumber?: string;
 }
 
-export default function TrackOrderPage() {
+function TrackOrderContent() {
+  const searchParams = useSearchParams();
+
   useEffect(() => {
     document.title = "Track your Order | StichKala - Handcrafted Gifts";
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute(
         "content",
-        "Track your order status with StichKala. Enter your order number to see real-time updates on your handcrafted gifts."
+        "Track your order status with StichKala. Enter your order number or open your email link — your number can be filled in automatically."
       );
   }, []);
 
@@ -38,8 +41,9 @@ export default function TrackOrderPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const trackOrder = async () => {
-    if (!orderNumber.trim()) {
+  const lookupOrder = useCallback(async (rawNumber: string) => {
+    const trimmed = rawNumber.trim();
+    if (!trimmed) {
       setError("Please enter an order number");
       return;
     }
@@ -48,27 +52,40 @@ export default function TrackOrderPage() {
     setError("");
 
     try {
-      // In a real app, you'd have a specific API endpoint for tracking
       const response = await fetch("/api/orders");
       const result = await response.json();
 
       if (result.success) {
         const foundOrder = result.orders.find(
           (o: OrderStatus) =>
-            o.orderNumber.toLowerCase() === orderNumber.toLowerCase()
+            o.orderNumber.toLowerCase() === trimmed.toLowerCase()
         );
 
         if (foundOrder) {
           setOrder(foundOrder);
         } else {
+          setOrder(null);
           setError("Order not found. Please check your order number.");
         }
       }
-    } catch (error) {
+    } catch {
       setError("Failed to track order. Please try again.");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("order");
+    if (!fromQuery) return;
+    const decoded = decodeURIComponent(fromQuery).trim();
+    if (!decoded) return;
+    setOrderNumber(decoded);
+    void lookupOrder(decoded);
+  }, [searchParams, lookupOrder]);
+
+  const trackOrder = () => {
+    void lookupOrder(orderNumber);
   };
 
   const getStatusSteps = (currentStatus: string) => {
@@ -85,15 +102,14 @@ export default function TrackOrderPage() {
 
     return steps.map((step, index) => ({
       ...step,
-      completed: index <= currentIndex,
-      active: index === currentIndex,
+      completed: currentIndex >= 0 && index <= currentIndex,
+      active: currentIndex >= 0 && index === currentIndex,
     }));
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blush via-lavender to-beige py-6 px-4 sm:py-12 sm:px-6 pt-12">
       <div className="max-w-4xl mx-auto pt-12 sm:pt-12 mt-4 sm:mt-10">
-        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -104,11 +120,11 @@ export default function TrackOrderPage() {
             Track Your Order
           </h1>
           <p className="text-text-light text-sm sm:text-base md:text-lg">
-            Enter your order number to see the current status
+            Enter your order number, or open the link from your email — we fill
+            it in for you. You can still edit the box anytime.
           </p>
         </motion.div>
 
-        {/* Search Form */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -120,11 +136,14 @@ export default function TrackOrderPage() {
               type="text"
               value={orderNumber}
               onChange={(e) => setOrderNumber(e.target.value)}
-              placeholder="Enter your order number (e.g., HG000001)"
+              placeholder="Order number (e.g. HG000001)"
               className="flex-1 px-4 sm:px-6 py-3 sm:py-4 rounded-full sm:rounded-full border border-gray-300 sm:border-2 focus:border-rose focus:outline-none transition-colors text-sm sm:text-base"
-              onKeyPress={(e) => e.key === "Enter" && trackOrder()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") trackOrder();
+              }}
             />
             <motion.button
+              type="button"
               onClick={trackOrder}
               disabled={loading}
               className="bg-rose text-white px-6 sm:px-8 py-3 sm:py-4 rounded-full hover:bg-opacity-90 transition-all font-medium disabled:opacity-50 text-sm sm:text-base whitespace-nowrap"
@@ -142,7 +161,6 @@ export default function TrackOrderPage() {
           )}
         </motion.div>
 
-        {/* Order Details */}
         {order && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -150,7 +168,6 @@ export default function TrackOrderPage() {
             transition={{ duration: 0.6 }}
             className="bg-white rounded-2xl sm:rounded-3xl shadow-lg sm:shadow-xl overflow-hidden"
           >
-            {/* Order Header */}
             <div className="bg-gradient-soft p-4 sm:p-6 md:p-8">
               <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4 mb-4">
                 <div className="flex-1">
@@ -169,87 +186,111 @@ export default function TrackOrderPage() {
                     {order.items.reduce((sum, item) => sum + item.quantity, 0)}{" "}
                     item(s)
                   </p>
+                  {order.status === "cancelled" && (
+                    <p className="mt-2 inline-block rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-800">
+                      Cancelled
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Status Timeline */}
             <div className="p-4 sm:p-6 md:p-8">
               <h3 className="font-serif text-lg sm:text-xl text-text-dark mb-4 sm:mb-6">
                 Order Status
               </h3>
 
-              <div className="relative">
-                {getStatusSteps(order.status).map((step, index) => (
-                  <div
-                    key={step.key}
-                    className="flex items-start mb-4 sm:mb-6 last:mb-0"
-                  >
+              {order.status === "cancelled" ? (
+                <div className="rounded-xl border border-red-200 bg-red-50/90 px-4 py-6 sm:px-6 sm:py-8 text-center">
+                  <p className="text-3xl sm:text-4xl mb-2" aria-hidden>
+                    ✕
+                  </p>
+                  <p className="font-serif text-lg sm:text-xl font-semibold text-red-900">
+                    This order is cancelled
+                  </p>
+                  <p className="mt-2 text-sm text-red-800/90 max-w-md mx-auto leading-relaxed">
+                    We are not processing or shipping this order. If you think
+                    this is a mistake, contact us on Instagram below and include
+                    your order number.
+                  </p>
+                </div>
+              ) : (
+                <div className="relative">
+                  {getStatusSteps(order.status).map((step, index) => (
                     <div
-                      className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-base sm:text-lg md:text-xl flex-shrink-0 ${
-                        step.completed
-                          ? "bg-rose text-white"
-                          : "bg-gray-200 text-gray-400"
-                      }`}
+                      key={step.key}
+                      className="flex items-start mb-4 sm:mb-6 last:mb-0"
                     >
-                      {step.icon}
-                    </div>
-
-                    <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                      <h4
-                        className={`font-medium text-sm sm:text-base ${
-                          step.completed ? "text-text-dark" : "text-gray-400"
+                      <div
+                        className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-base sm:text-lg md:text-xl flex-shrink-0 ${
+                          step.completed
+                            ? "bg-rose text-white"
+                            : "bg-gray-200 text-gray-400"
                         }`}
                       >
-                        {step.label}
-                      </h4>
-                      {step.active && (
-                        <p className="text-xs sm:text-sm text-rose font-medium mt-1">
-                          Current Status
-                        </p>
+                        {step.icon}
+                      </div>
+
+                      <div className="ml-3 sm:ml-4 flex-1 min-w-0">
+                        <h4
+                          className={`font-medium text-sm sm:text-base ${
+                            step.completed ? "text-text-dark" : "text-gray-400"
+                          }`}
+                        >
+                          {step.label}
+                        </h4>
+                        {step.active && (
+                          <p className="text-xs sm:text-sm text-rose font-medium mt-1">
+                            Current Status
+                          </p>
+                        )}
+                      </div>
+
+                      {index < getStatusSteps(order.status).length - 1 && (
+                        <div
+                          className={`absolute left-4 sm:left-5 md:left-6 w-0.5 h-4 sm:h-6 mt-8 sm:mt-10 md:mt-12 ${
+                            step.completed ? "bg-rose" : "bg-gray-200"
+                          }`}
+                          style={{ top: `${index * 72 + 36}px` }}
+                        />
                       )}
                     </div>
+                  ))}
+                </div>
+              )}
 
-                    {index < getStatusSteps(order.status).length - 1 && (
-                      <div
-                        className={`absolute left-4 sm:left-5 md:left-6 w-0.5 h-4 sm:h-6 mt-8 sm:mt-10 md:mt-12 ${
-                          step.completed ? "bg-rose" : "bg-gray-200"
-                        }`}
-                        style={{
-                          top: `${
-                            index * (window.innerWidth < 640 ? 64 : 96) + 32
-                          }px`,
-                        }}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Estimated Delivery */}
               <div className="bg-blue-50 rounded-lg sm:rounded-xl p-4 sm:p-6 mt-6 sm:mt-8">
                 <h4 className="font-medium text-text-dark mb-1 sm:mb-2 text-sm sm:text-base">
-                  Estimated Delivery
+                  {order.status === "cancelled"
+                    ? "Delivery"
+                    : "Estimated Delivery"}
                 </h4>
-                <p className="text-text-light text-xs sm:text-sm">
-                  {new Date(order.estimatedDelivery).toLocaleDateString(
-                    "en-IN",
-                    {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    }
-                  )}
-                </p>
-                {order.trackingNumber && (
-                  <p className="text-xs text-text-light mt-2">
-                    Tracking Number: {order.trackingNumber}
+                {order.status === "cancelled" ? (
+                  <p className="text-text-light text-xs sm:text-sm">
+                    No delivery — this order was cancelled.
                   </p>
+                ) : (
+                  <>
+                    <p className="text-text-light text-xs sm:text-sm">
+                      {new Date(order.estimatedDelivery).toLocaleDateString(
+                        "en-IN",
+                        {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        }
+                      )}
+                    </p>
+                    {order.trackingNumber && (
+                      <p className="text-xs text-text-light mt-2">
+                        Tracking Number: {order.trackingNumber}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
-              {/* Order Items */}
               <div className="mt-6 sm:mt-8">
                 <h4 className="font-medium text-text-dark mb-3 sm:mb-4 text-sm sm:text-base">
                   Order Items
@@ -276,7 +317,6 @@ export default function TrackOrderPage() {
           </motion.div>
         )}
 
-        {/* Help Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -287,9 +327,10 @@ export default function TrackOrderPage() {
             Need help with your order? We&apos;re here to assist you!
           </p>
           <motion.button
+            type="button"
             onClick={async () => {
               const text = `Hi! I need help tracking my order ${
-                orderNumber || "[Order Number]"
+                orderNumber.trim() || "[Order Number]"
               }`;
               try {
                 await navigator.clipboard.writeText(text);
@@ -308,5 +349,19 @@ export default function TrackOrderPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function TrackOrderPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[50vh] flex items-center justify-center text-text-light text-sm">
+          Loading…
+        </div>
+      }
+    >
+      <TrackOrderContent />
+    </Suspense>
   );
 }

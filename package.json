@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){if(e.code!=='ENOENT')throw e}\" && next dev",
+    "dev:lan": "next dev -H 0.0.0.0 -p 3000",
+    "dev:lan:clean": "node -e \"try{require('fs').rmSync('.next',{recursive:true,force:true})}catch(e){if(e.code!=='ENOENT')throw e}\" && next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -24,7 +27,7 @@
     "mongodb": "^6.20.0",
     "mongoose": "^8.19.2",
     "next": "13.5.1",
-    "nodemailer": "^7.0.10",
+    "nodemailer": "^7.0.13",
     "postcss": "8.4.30",
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.6",

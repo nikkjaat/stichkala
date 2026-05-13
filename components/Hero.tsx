@@ -93,7 +93,7 @@ export default function Hero() {
           <div className="flex flex-col sm:flex-row justify-center items-center gap-6 sm:gap-8 md:gap-12 lg:gap-16">
             <div className="text-center">
               <p className="text-2xl sm:text-3xl md:text-4xl font-serif text-rose">
-                100+
+                1000+
               </p>
               <p className="text-xs sm:text-sm md:text-base text-text-light mt-1 sm:mt-2">
                 Happy Customers
@@ -101,7 +101,7 @@ export default function Hero() {
             </div>
             <div className="text-center">
               <p className="text-2xl sm:text-3xl md:text-4xl font-serif text-rose">
-                50+
+                100+
               </p>
               <p className="text-xs sm:text-sm md:text-base text-text-light mt-1 sm:mt-2">
                 Unique Designs

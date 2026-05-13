@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import AdminChatPanel from "@/components/AdminChatPanel";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiPlus,
@@ -14,18 +15,17 @@ import {
   FiPackage,
   FiUser,
   FiDollarSign,
-  
   FiCalendar,
   FiShoppingBag,
   FiMove,
   FiInfo,
+  FiSearch,
 } from "react-icons/fi";
-import { get } from "node:http";
 
 interface Product {
   _id: string;
   name: string;
-  category: "embroidery" | "hanky" | "accessories";
+  category: string;
   description: string;
   basePrice: number;
   images: string[];
@@ -60,6 +60,7 @@ interface Order {
     productImage: string;
     quantity: number;
     price: number;
+    originalListPrice?: number;
     customization: {
       text: string;
       color: string;
@@ -71,12 +72,234 @@ interface Order {
   totalAmount: number;
   status: string;
   paymentStatus: string;
+  paymentMethod?: string;
+  paymentDetails?: {
+    upi_transaction_id?: string;
+    payment_screenshot?: string;
+  };
+  notes?: string;
   createdAt: string;
   estimatedDelivery: string;
 }
 
+function orderNeedsUpiReview(order: Order): boolean {
+  if (order.paymentMethod !== "upi" || !order.paymentDetails) return false;
+  const hasProof =
+    Boolean(String(order.paymentDetails.upi_transaction_id ?? "").trim()) ||
+    Boolean(String(order.paymentDetails.payment_screenshot ?? "").trim());
+  if (!hasProof) return false;
+  return (
+    order.paymentStatus === "pending" ||
+    (order.paymentStatus === "failed" && order.status === "pending")
+  );
+}
+
+function AdminCategoryManager({
+  categories,
+  products,
+  onRefresh,
+}: {
+  categories: { slug: string; label: string; emoji: string }[];
+  products: Product[];
+  onRefresh: () => void | Promise<void>;
+}) {
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editEmoji, setEditEmoji] = useState("");
+  const [busySlug, setBusySlug] = useState<string | null>(null);
+
+  const startEdit = (slug: string, label: string, emoji: string) => {
+    setEditingSlug(slug);
+    setEditLabel(label);
+    setEditEmoji(emoji);
+  };
+
+  const cancelEdit = () => {
+    setEditingSlug(null);
+    setEditLabel("");
+    setEditEmoji("");
+  };
+
+  const saveEdit = async () => {
+    if (!editingSlug) return;
+    const label = editLabel.trim();
+    if (!label) {
+      alert("Enter a category name.");
+      return;
+    }
+    setBusySlug(editingSlug);
+    try {
+      const r = await fetch(
+        `/api/admin/product-categories/${encodeURIComponent(editingSlug)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label,
+            emoji: editEmoji.trim() ? editEmoji.trim().slice(0, 8) : "📦",
+          }),
+        }
+      );
+      const j = await r.json();
+      if (!j.success) {
+        alert(j.error || "Update failed");
+        return;
+      }
+      await onRefresh();
+      cancelEdit();
+    } catch {
+      alert("Network error");
+    } finally {
+      setBusySlug(null);
+    }
+  };
+
+  const removeCategory = async (slug: string) => {
+    const used = products.filter((p) => p.category === slug).length;
+    if (used > 0) {
+      alert(
+        `This category is used by ${used} product(s). Change those products first, then delete.`
+      );
+      return;
+    }
+    if (!confirm("Delete this category permanently?")) return;
+
+    setBusySlug(slug);
+    try {
+      const r = await fetch(
+        `/api/admin/product-categories/${encodeURIComponent(slug)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      const j = await r.json();
+      if (!r.ok || !j.success) {
+        alert(j.error || "Delete failed");
+        return;
+      }
+      await onRefresh();
+      if (editingSlug === slug) cancelEdit();
+    } catch {
+      alert("Network error");
+    } finally {
+      setBusySlug(null);
+    }
+  };
+
+  return (
+    <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <h3 className="font-serif text-base font-semibold text-text-dark">
+        Product categories
+      </h3>
+      <p className="text-xs text-text-light mt-1 mb-3">
+        Only categories saved here (database) appear on the site. Add new ones
+        from the Add/Edit product form. Edit or delete when no products use a
+        category.
+      </p>
+      {categories.length === 0 ? (
+        <p className="text-sm text-text-light">
+          No categories yet. Open <strong>Add Product</strong>, use &quot;Add new
+          category&quot;, then save — or add categories before assigning
+          products.
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {categories.map((c) => {
+            const busy = busySlug === c.slug;
+            const editing = editingSlug === c.slug;
+            const used = products.filter((p) => p.category === c.slug).length;
+
+            return (
+              <li
+                key={c.slug}
+                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                {!editing ? (
+                  <>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg shrink-0">{c.emoji}</span>
+                      <div className="min-w-0">
+                        <p className="font-medium text-text-dark text-sm truncate">
+                          {c.label}
+                        </p>
+                        <p className="text-[11px] text-text-light font-mono truncate">
+                          {c.slug}
+                          {used > 0 ? ` · ${used} product(s)` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => startEdit(c.slug, c.label, c.emoji)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-rose text-rose hover:bg-rose/10 disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || used > 0}
+                        onClick={() => void removeCategory(c.slug)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40"
+                        title={
+                          used > 0
+                            ? "Reassign products first"
+                            : "Delete category"
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-2 w-full sm:flex-row sm:items-end">
+                    <input
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                      maxLength={80}
+                    />
+                    <input
+                      value={editEmoji}
+                      onChange={(e) => setEditEmoji(e.target.value)}
+                      className="w-28 px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                      maxLength={8}
+                      placeholder="Emoji"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void saveEdit()}
+                        className="px-3 py-2 text-xs rounded-lg bg-rose text-white disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={cancelEdit}
+                        className="px-3 py-2 text-xs rounded-lg border border-gray-300 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "products">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "products" | "chats">(
+    "orders"
+  );
+  const [chatUnread, setChatUnread] = useState(0);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,11 +311,48 @@ export default function AdminPage() {
     useState<Product | null>(null);
   const [showOrderProductsPopup, setShowOrderProductsPopup] =
     useState<Order | null>(null);
+  const [screenshotLightbox, setScreenshotLightbox] = useState<string | null>(
+    null
+  );
+  const [paymentReviewLoading, setPaymentReviewLoading] = useState<
+    string | null
+  >(null);
+  const [orderSearch, setOrderSearch] = useState("");
+  const [productCategories, setProductCategories] = useState<
+    { slug: string; label: string; emoji: string }[]
+  >([]);
+
+  const loadProductCategories = useCallback(async () => {
+    try {
+      const r = await fetch("/api/product-categories");
+      const j = await r.json();
+      if (j.success && Array.isArray(j.categories)) {
+        setProductCategories(
+          j.categories.map(
+            (c: { slug: string; label: string; emoji?: string }) => ({
+              slug: String(c.slug),
+              label: String(c.label),
+              emoji: String(c.emoji ?? "📦"),
+            })
+          )
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const filteredOrders = useMemo(() => {
+    const q = orderSearch.replace(/^#/, "").trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter((o) => o.orderNumber.toLowerCase().includes(q));
+  }, [orders, orderSearch]);
 
   // Real-time updates using polling
   useEffect(() => {
     fetchOrders();
     fetchProducts();
+    void loadProductCategories();
 
     // Set up polling for real-time updates
     const interval = setInterval(() => {
@@ -100,7 +360,7 @@ export default function AdminPage() {
     }, 5000); // Poll every 5 seconds
 
     return () => clearInterval(interval);
-  }, []);
+  }, [loadProductCategories]);
 
   const fetchOrders = async () => {
     try {
@@ -126,6 +386,37 @@ export default function AdminPage() {
       }
     } catch (error) {
       console.error("Error fetching products:", error);
+    }
+  };
+
+  const submitPaymentReview = async (
+    orderId: string,
+    action: "confirm" | "not_received"
+  ) => {
+    const message =
+      action === "confirm"
+        ? "Confirm this UPI payment? The customer receives an email with their order number and a one-click track link."
+        : "Mark payment as not verified? Pending orders are cancelled and the customer receives an email with the track link (if email is on file).";
+    if (!confirm(message)) return;
+
+    setPaymentReviewLoading(orderId);
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentReviewAction: action }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        alert(result.error || "Could not update payment review.");
+        return;
+      }
+      await fetchOrders();
+    } catch (e) {
+      console.error(e);
+      alert("Request failed.");
+    } finally {
+      setPaymentReviewLoading(null);
     }
   };
 
@@ -216,13 +507,25 @@ export default function AdminPage() {
     <div className="min-h-screen bg-gray-50 p-4 pt-12 mt-12">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="font-serif text-2xl sm:text-3xl text-text-dark mb-2">
-            Admin Panel
-          </h1>
-          <p className="text-text-light text-sm sm:text-base">
-            Manage your products and orders
-          </p>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="font-serif text-2xl sm:text-3xl text-text-dark mb-2">
+              Admin Panel
+            </h1>
+            <p className="text-text-light text-sm sm:text-base">
+              Manage your products and orders
+            </p>
+          </div>
+          <button
+            type="button"
+            className="self-start px-4 py-2 rounded-full border border-gray-200 text-sm text-text-dark hover:bg-gray-100 transition-colors"
+            onClick={async () => {
+              await fetch("/api/admin/session", { method: "DELETE" });
+              window.location.href = "/secure/admin/login";
+            }}
+          >
+            Sign out
+          </button>
         </div>
 
         {/* Tabs */}
@@ -248,6 +551,21 @@ export default function AdminPage() {
             >
               Products ({products.length})
             </button>
+            <button
+              onClick={() => setActiveTab("chats")}
+              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+                activeTab === "chats"
+                  ? "border-b-2 border-rose text-rose"
+                  : "text-text-light hover:text-text-dark"
+              }`}
+            >
+              Chats
+              {chatUnread > 0 ? (
+                <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-rose px-1.5 py-0.5 text-[10px] text-white align-middle">
+                  {chatUnread > 99 ? "99+" : chatUnread}
+                </span>
+              ) : null}
+            </button>
           </div>
         </div>
 
@@ -255,252 +573,433 @@ export default function AdminPage() {
           <div className="space-y-4">
             {/* Orders List */}
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-              <div className="p-4 sm:p-6 border-b">
-                <h2 className="font-serif text-lg sm:text-xl text-text-dark">
-                  Recent Orders
-                </h2>
-                <p className="text-text-light text-sm mt-1">
-                  {orders.length} orders found
-                </p>
+              <div className="p-4 sm:p-6 border-b space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="font-serif text-lg sm:text-xl text-text-dark">
+                      Recent Orders
+                    </h2>
+                    <p className="text-text-light text-sm mt-1">
+                      {orderSearch.trim()
+                        ? `${filteredOrders.length} of ${orders.length} orders match`
+                        : `${orders.length} orders`}
+                    </p>
+                  </div>
+                  <div className="relative w-full sm:max-w-xs shrink-0">
+                    <FiSearch
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-light"
+                      size={18}
+                      aria-hidden
+                    />
+                    <input
+                      type="search"
+                      value={orderSearch}
+                      onChange={(e) => setOrderSearch(e.target.value)}
+                      placeholder="Search by order number…"
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50/80 py-2.5 pl-10 pr-3 text-sm text-text-dark outline-none transition-colors placeholder:text-text-light focus:border-rose focus:bg-white focus:ring-1 focus:ring-rose/25"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="divide-y">
-                {orders.map((order) => (
-                  <div key={order._id}>
-                    <motion.div
-                      className={`p-4 sm:p-6 cursor-pointer hover:bg-gray-50 transition-colors ${
-                        expandedOrder === order._id ? "bg-blue-50" : ""
-                      }`}
-                      onClick={() => handleOrderClick(order)}
-                      whileHover={{ x: 2 }}
-                    >
-                      <div className="flex gap-4">
-                        {/* Product Image */}
-                        <div className="flex-shrink-0">
-                          <img
-                            src={getProductImage(order)}
-                            alt="Product"
-                            className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-lg border cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={(e) => handleOrderImageClick(order, e)}
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.src = "";
-                            }}
-                          />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-medium text-text-dark text-sm sm:text-base truncate">
-                                  #{order.orderNumber}
-                                </h3>
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                                    order.status
-                                  )}`}
-                                >
-                                  {order.status}
-                                </span>
-                              </div>
-                              <p className="text-text-light text-sm truncate">
-                                {order.customerInfo.name}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2 ml-2">
-                              {expandedOrder === order._id ? (
-                                <FiChevronUp className="text-text-light" />
-                              ) : (
-                                <FiChevronDown className="text-text-light" />
-                              )}
-                            </div>
+                {filteredOrders.length === 0 ? (
+                  <div className="p-8 sm:p-12 text-center text-text-light text-sm">
+                    {orders.length === 0 ? (
+                      <p>No orders yet.</p>
+                    ) : (
+                      <>
+                        <p className="text-text-dark font-medium">
+                          No orders match your search.
+                        </p>
+                        <p className="mt-2 text-xs">
+                          Try another order number or clear the search box.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  filteredOrders.map((order) => (
+                    <div key={order._id}>
+                      <motion.div
+                        className={`p-4 sm:p-6 cursor-pointer hover:bg-gray-50 transition-colors ${
+                          expandedOrder === order._id ? "bg-blue-50" : ""
+                        }`}
+                        onClick={() => handleOrderClick(order)}
+                        whileHover={{ x: 2 }}
+                      >
+                        <div className="flex gap-4">
+                          {/* Product Image */}
+                          <div className="flex-shrink-0">
+                            <img
+                              src={getProductImage(order)}
+                              alt="Product"
+                              className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-lg border cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={(e) => handleOrderImageClick(order, e)}
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = "";
+                              }}
+                            />
                           </div>
 
-                          <div className="flex justify-between items-center text-xs sm:text-sm text-text-light">
-                            <div className="flex items-center gap-4">
-                              <span className="flex items-center gap-1">
-                                <FiPackage size={12} />
-                                {order.items.length} item(s)
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <FiDollarSign size={12} />₹{order.totalAmount}
-                              </span>
-                            </div>
-                            <span className="flex items-center gap-1">
-                              <FiCalendar size={12} />
-                              {new Date(order.createdAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-
-                    {/* Order Details - Expandable */}
-                    <AnimatePresence>
-                      {expandedOrder === order._id && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.3 }}
-                          className="border-t bg-white"
-                        >
-                          <div className="p-4 sm:p-6 space-y-6">
-                            {/* Customer Information */}
-                            <div>
-                              <h4 className="font-medium text-text-dark mb-3 flex items-center gap-2">
-                                <FiUser className="text-rose" />
-                                Customer Information
-                              </h4>
-                              <div className="text-sm text-text-light space-y-2 bg-gray-50 rounded-lg p-3">
-                                <p>
-                                  <strong>Name:</strong>{" "}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="font-medium text-text-dark text-sm sm:text-base truncate">
+                                    #{order.orderNumber}
+                                  </h3>
+                                  {orderNeedsUpiReview(order) && (
+                                    <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium bg-amber-100 text-amber-900">
+                                      UPI review
+                                    </span>
+                                  )}
+                                  <span
+                                    className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                                      order.status
+                                    )}`}
+                                  >
+                                    {order.status}
+                                  </span>
+                                </div>
+                                <p className="text-text-light text-sm truncate">
                                   {order.customerInfo.name}
                                 </p>
-                                <p>
-                                  <strong>Email:</strong>{" "}
-                                  {order.customerInfo.email}
-                                </p>
-                                <p>
-                                  <strong>Phone:</strong>{" "}
-                                  {order.customerInfo.phone}
-                                </p>
-                                <p>
-                                  <strong>Address:</strong>{" "}
-                                  {order.customerInfo.address.street},{" "}
-                                  {order.customerInfo.address.city},{" "}
-                                  {order.customerInfo.address.state} -{" "}
-                                  {order.customerInfo.address.pincode}
-                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 ml-2">
+                                {expandedOrder === order._id ? (
+                                  <FiChevronUp className="text-text-light" />
+                                ) : (
+                                  <FiChevronDown className="text-text-light" />
+                                )}
                               </div>
                             </div>
 
-                            {/* Order Items */}
-                            <div>
-                              <h4 className="font-medium text-text-dark mb-3 flex items-center gap-2">
-                                <FiShoppingBag className="text-rose" />
-                                Order Items
-                              </h4>
-                              <div className="space-y-3 cursor-pointer">
-                                {order.items.map((item, index) => (
-                                  <div
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOrderImageClick(order, e);
-                                    }}
-                                    key={index}
-                                    className="bg-gray-50 rounded-lg p-3 border"
-                                  >
-                                    <div className="flex gap-3">
-                                      {/* Item Image */}
-                                      <img
-                                        src={getProductImage(order)}
-                                        alt={item.productName}
-                                        className="w-16 h-16 object-cover rounded-lg border  hover:opacity-80 transition-opacity"
-                                        onError={(e) => {
-                                          const target =
-                                            e.target as HTMLImageElement;
-                                          target.src = "/api/placeholder/80/80";
-                                        }}
-                                      />
-                                      <div className="flex-1">
-                                        <div className="flex justify-between items-start mb-2">
-                                          <h5 className="font-medium text-text-dark text-sm">
-                                            {item.productName}
-                                          </h5>
-                                          <span className="text-sm text-text-light">
-                                            ₹{item.price}
-                                          </span>
-                                        </div>
-                                        <p className="text-sm text-text-light mb-2">
-                                          Quantity: {item.quantity}
-                                        </p>
-
-                                        {item.customization.text && (
-                                          <div className="text-xs text-text-light space-y-1 bg-white rounded p-2">
-                                            <p>
-                                              <strong>Text:</strong>{" "}
-                                              {item.customization.text}
-                                            </p>
-                                            <p>
-                                              <strong>Color:</strong>{" "}
-                                              {item.customization.color}
-                                            </p>
-                                            <p>
-                                              <strong>Size:</strong>{" "}
-                                              {item.customization.size}
-                                            </p>
-                                            <p>
-                                              <strong>Material:</strong>{" "}
-                                              {item.customization.material}
-                                            </p>
-                                            {item.customization
-                                              .specialInstructions && (
-                                              <p>
-                                                <strong>Instructions:</strong>{" "}
-                                                {
-                                                  item.customization
-                                                    .specialInstructions
-                                                }
-                                              </p>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Status Update */}
-                            <div>
-                              <h4 className="font-medium text-text-dark mb-2">
-                                Update Status
-                              </h4>
-                              <select
-                                value={order.status}
-                                onChange={(e) =>
-                                  updateOrderStatus(order._id, e.target.value)
-                                }
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-rose"
-                              >
-                                <option value="pending">Pending</option>
-                                <option value="confirmed">Confirmed</option>
-                                <option value="in-progress">In Progress</option>
-                                <option value="completed">Completed</option>
-                                <option value="shipped">Shipped</option>
-                                <option value="delivered">Delivered</option>
-                                <option value="cancelled">Cancelled</option>
-                              </select>
-                            </div>
-
-                            {/* Order Summary */}
-                            <div className="border-t pt-4">
-                              <div className="flex justify-between items-center text-base font-medium">
-                                <span>Total Amount:</span>
-                                <span className="text-rose">
-                                  ₹{order.totalAmount}
+                            <div className="flex justify-between items-center text-xs sm:text-sm text-text-light">
+                              <div className="flex items-center gap-4">
+                                <span className="flex items-center gap-1">
+                                  <FiPackage size={12} />
+                                  {order.items.length} item(s)
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <FiDollarSign size={12} />₹{order.totalAmount}
                                 </span>
                               </div>
-                              <p className="text-xs text-text-light mt-1">
-                                Estimated Delivery:{" "}
-                                {new Date(
-                                  order.estimatedDelivery
-                                ).toLocaleDateString()}
-                              </p>
+                              <span className="flex items-center gap-1">
+                                <FiCalendar size={12} />
+                                {new Date(order.createdAt).toLocaleDateString()}
+                              </span>
                             </div>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                ))}
+                        </div>
+                      </motion.div>
+
+                      {/* Order Details - Expandable */}
+                      <AnimatePresence>
+                        {expandedOrder === order._id && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="border-t bg-white"
+                          >
+                            <div className="p-4 sm:p-6 space-y-6">
+                              {/* Customer Information */}
+                              <div>
+                                <h4 className="font-medium text-text-dark mb-3 flex items-center gap-2">
+                                  <FiUser className="text-rose" />
+                                  Customer Information
+                                </h4>
+                                <div className="text-sm text-text-light space-y-2 bg-gray-50 rounded-lg p-3">
+                                  <p>
+                                    <strong>Name:</strong>{" "}
+                                    {order.customerInfo.name}
+                                  </p>
+                                  <p>
+                                    <strong>Email:</strong>{" "}
+                                    {order.customerInfo.email}
+                                  </p>
+                                  <p>
+                                    <strong>Phone:</strong>{" "}
+                                    {order.customerInfo.phone}
+                                  </p>
+                                  <p>
+                                    <strong>Address:</strong>{" "}
+                                    {order.customerInfo.address.street},{" "}
+                                    {order.customerInfo.address.city},{" "}
+                                    {order.customerInfo.address.state} -{" "}
+                                    {order.customerInfo.address.pincode}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {order.paymentMethod === "upi" &&
+                                order.paymentDetails &&
+                                (order.paymentDetails.upi_transaction_id ||
+                                  order.paymentDetails.payment_screenshot) && (
+                                  <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                                    <h4 className="font-medium text-text-dark mb-1 flex items-center gap-2">
+                                      <FiDollarSign className="text-rose" />
+                                      UPI payment & proof
+                                    </h4>
+                                    <div className="text-sm text-text-light space-y-2">
+                                      <p>
+                                        <strong className="text-text-dark">
+                                          Payment status:
+                                        </strong>{" "}
+                                        {order.paymentStatus}
+                                      </p>
+                                      {order.paymentDetails
+                                        .upi_transaction_id && (
+                                        <p>
+                                          <strong className="text-text-dark">
+                                            UTR / reference:
+                                          </strong>{" "}
+                                          <span className="font-mono text-text-dark">
+                                            {
+                                              order.paymentDetails
+                                                .upi_transaction_id
+                                            }
+                                          </span>
+                                        </p>
+                                      )}
+                                      {order.paymentDetails
+                                        .payment_screenshot && (
+                                        <div>
+                                          <p className="font-medium text-text-dark mb-2">
+                                            Screenshot
+                                          </p>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setScreenshotLightbox(
+                                                order.paymentDetails!
+                                                  .payment_screenshot!
+                                              );
+                                            }}
+                                            className="relative block rounded-lg border-2 border-white shadow-md overflow-hidden focus:outline-none focus:ring-2 focus:ring-rose"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={
+                                                order.paymentDetails
+                                                  .payment_screenshot
+                                              }
+                                              alt="Payment proof thumbnail"
+                                              className="max-h-44 w-auto object-contain bg-black/5 hover:opacity-95 transition-opacity"
+                                            />
+                                          </button>
+                                          <p className="text-xs text-text-light mt-1">
+                                            Tap image for full screen
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {(order.paymentStatus === "pending" ||
+                                      (order.paymentStatus === "failed" &&
+                                        order.status === "pending")) && (
+                                      <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-amber-200/80">
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            paymentReviewLoading === order._id
+                                          }
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void submitPaymentReview(
+                                              order._id,
+                                              "confirm"
+                                            );
+                                          }}
+                                          className="flex-1 bg-green-600 text-white py-2.5 rounded-full text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                                        >
+                                          {paymentReviewLoading === order._id
+                                            ? "Saving…"
+                                            : "Confirm payment"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            paymentReviewLoading === order._id
+                                          }
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void submitPaymentReview(
+                                              order._id,
+                                              "not_received"
+                                            );
+                                          }}
+                                          className="flex-1 bg-gray-800 text-white py-2.5 rounded-full text-sm font-medium hover:bg-gray-900 disabled:opacity-50"
+                                        >
+                                          Payment not verified
+                                        </button>
+                                      </div>
+                                    )}
+                                    {order.paymentStatus === "paid" && (
+                                      <p className="text-sm text-green-800 font-medium pt-1 border-t border-amber-200/80">
+                                        Payment confirmed.
+                                      </p>
+                                    )}
+                                    {order.paymentStatus === "failed" &&
+                                      order.status === "cancelled" && (
+                                        <p className="text-sm text-gray-600 pt-1 border-t border-amber-200/80">
+                                          Not verified — order cancelled.
+                                        </p>
+                                      )}
+                                  </div>
+                                )}
+
+                              {/* Order Items */}
+                              <div>
+                                <h4 className="font-medium text-text-dark mb-3 flex items-center gap-2">
+                                  <FiShoppingBag className="text-rose" />
+                                  Order Items
+                                </h4>
+                                <div className="space-y-3 cursor-pointer">
+                                  {order.items.map((item, index) => (
+                                    <div
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOrderImageClick(order, e);
+                                      }}
+                                      key={index}
+                                      className="bg-gray-50 rounded-lg p-3 border"
+                                    >
+                                      <div className="flex gap-3">
+                                        {/* Item Image */}
+                                        <img
+                                          src={getProductImage(order)}
+                                          alt={item.productName}
+                                          className="w-16 h-16 object-cover rounded-lg border  hover:opacity-80 transition-opacity"
+                                          onError={(e) => {
+                                            const target =
+                                              e.target as HTMLImageElement;
+                                            target.src =
+                                              "/api/placeholder/80/80";
+                                          }}
+                                        />
+                                        <div className="flex-1">
+                                          <div className="flex justify-between items-start mb-2">
+                                            <h5 className="font-medium text-text-dark text-sm">
+                                              {item.productName}
+                                            </h5>
+                                            <div className="text-right text-sm">
+                                              {item.originalListPrice != null &&
+                                              item.originalListPrice !==
+                                                item.price ? (
+                                                <>
+                                                  <span className="text-text-light line-through block text-xs">
+                                                    ₹{item.originalListPrice}
+                                                  </span>
+                                                  <span className="text-rose font-medium">
+                                                    ₹{item.price}
+                                                  </span>
+                                                  <span className="block text-[10px] text-amber-800">
+                                                    Revised
+                                                  </span>
+                                                </>
+                                              ) : (
+                                                <span className="text-text-light">
+                                                  ₹{item.price}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <p className="text-sm text-text-light mb-2">
+                                            Quantity: {item.quantity}
+                                          </p>
+
+                                          {item.customization?.text && (
+                                            <div className="text-xs text-text-light space-y-1 bg-white rounded p-2">
+                                              <p>
+                                                <strong>Text:</strong>{" "}
+                                                {item.customization.text}
+                                              </p>
+                                              <p>
+                                                <strong>Color:</strong>{" "}
+                                                {item.customization.color}
+                                              </p>
+                                              <p>
+                                                <strong>Size:</strong>{" "}
+                                                {item.customization.size}
+                                              </p>
+                                              <p>
+                                                <strong>Material:</strong>{" "}
+                                                {item.customization.material}
+                                              </p>
+                                              {item.customization
+                                                .specialInstructions && (
+                                                <p>
+                                                  <strong>Instructions:</strong>{" "}
+                                                  {
+                                                    item.customization
+                                                      .specialInstructions
+                                                  }
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Status Update */}
+                              <div>
+                                <h4 className="font-medium text-text-dark mb-2">
+                                  Update Status
+                                </h4>
+                                <select
+                                  value={order.status}
+                                  onChange={(e) =>
+                                    updateOrderStatus(order._id, e.target.value)
+                                  }
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-rose"
+                                >
+                                  <option value="pending">Pending</option>
+                                  <option value="confirmed">Confirmed</option>
+                                  <option value="in-progress">
+                                    In Progress
+                                  </option>
+                                  <option value="completed">Completed</option>
+                                  <option value="shipped">Shipped</option>
+                                  <option value="delivered">Delivered</option>
+                                  <option value="cancelled">Cancelled</option>
+                                </select>
+                              </div>
+
+                              {/* Order Summary */}
+                              <div className="border-t pt-4">
+                                <div className="flex justify-between items-center text-base font-medium">
+                                  <span>Total Amount:</span>
+                                  <span className="text-rose">
+                                    ₹{order.totalAmount}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-text-light mt-1">
+                                  Estimated Delivery:{" "}
+                                  {new Date(
+                                    order.estimatedDelivery
+                                  ).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === "products" ? (
           <div>
             {/* Products Header */}
             <div className="mb-6 flex justify-between items-center">
@@ -523,6 +1022,12 @@ export default function AdminPage() {
                 <span>Add Product</span>
               </button>
             </div>
+
+            <AdminCategoryManager
+              categories={productCategories}
+              products={products}
+              onRefresh={loadProductCategories}
+            />
 
             {/* Products Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -603,7 +1108,22 @@ export default function AdminPage() {
               ))}
             </div>
           </div>
-        )}
+        ) : null}
+
+        <div className={activeTab === "chats" ? "" : "hidden"}>
+          <div className="space-y-4">
+            <p className="text-sm text-text-light max-w-2xl">
+              Reply to customers in real time. To get desktop alerts when you
+              are on another tab, allow notifications for this site in your
+              browser.
+            </p>
+            <AdminChatPanel
+              products={products}
+              active={activeTab === "chats"}
+              onUnread={setChatUnread}
+            />
+          </div>
+        </div>
 
         {/* Order Products Popup */}
         {showOrderProductsPopup && (
@@ -616,6 +1136,8 @@ export default function AdminPage() {
         {showProductModal && (
           <ProductModal
             product={editingProduct}
+            categories={productCategories}
+            onCategoriesChanged={loadProductCategories}
             onClose={() => {
               setShowProductModal(false);
               setEditingProduct(null);
@@ -638,6 +1160,38 @@ export default function AdminPage() {
               setShowProductModal(true);
             }}
           />
+        )}
+
+        {screenshotLightbox && (
+          <div
+            role="dialog"
+            aria-modal
+            aria-label="Payment screenshot full screen"
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/95 p-4"
+            onClick={() => setScreenshotLightbox(null)}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setScreenshotLightbox(null);
+              }}
+              className="absolute top-4 right-4 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-white text-gray-900 shadow-lg ring-2 ring-white/30 hover:bg-rose hover:text-white hover:ring-rose/40 transition-colors"
+              aria-label="Close image"
+            >
+              <FiX size={24} strokeWidth={2.5} className="block" />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={screenshotLightbox}
+              alt="Payment screenshot"
+              className="max-h-[min(92vh,920px)] max-w-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <p className="mt-4 text-center text-xs text-white/70">
+              Tap the X or outside the image to close
+            </p>
+          </div>
         )}
       </div>
     </div>
@@ -725,9 +1279,23 @@ function OrderProductsPopup({ order, onClose }: OrderProductsPopupProps) {
                       <h3 className="font-medium text-text-dark text-sm sm:text-base line-clamp-2">
                         {item.productName}
                       </h3>
-                      <span className="text-rose font-medium text-sm sm:text-base whitespace-nowrap ml-2">
-                        ₹{item.price}
-                      </span>
+                      <div className="text-right text-sm sm:text-base whitespace-nowrap ml-2">
+                        {item.originalListPrice != null &&
+                        item.originalListPrice !== item.price ? (
+                          <>
+                            <span className="text-text-light line-through block text-xs">
+                              ₹{item.originalListPrice}
+                            </span>
+                            <span className="text-rose font-medium">
+                              ₹{item.price}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-rose font-medium">
+                            ₹{item.price}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-2 text-xs sm:text-sm">
@@ -744,10 +1312,10 @@ function OrderProductsPopup({ order, onClose }: OrderProductsPopupProps) {
                     </div>
 
                     {/* Customization Details */}
-                    {(item.customization.text ||
-                      item.customization.color ||
-                      item.customization.size ||
-                      item.customization.material) && (
+                    {(item.customization?.text ||
+                      item.customization?.color ||
+                      item.customization?.size ||
+                      item.customization?.material) && (
                       <div className="mt-3 pt-3 border-t border-gray-200">
                         <div className="flex items-center gap-1 mb-2">
                           <FiInfo className="text-rose" size={12} />
@@ -841,6 +1409,8 @@ function OrderProductsPopup({ order, onClose }: OrderProductsPopupProps) {
 
 interface ProductModalProps {
   product: Product | null;
+  categories: { slug: string; label: string; emoji: string }[];
+  onCategoriesChanged: () => void | Promise<void>;
   onClose: () => void;
   onSave: () => void;
 }
@@ -1056,10 +1626,16 @@ function ProductDetailModal({
   );
 }
 
-function ProductModal({ product, onClose, onSave }: ProductModalProps) {
+function ProductModal({
+  product,
+  categories,
+  onCategoriesChanged,
+  onClose,
+  onSave,
+}: ProductModalProps) {
   const [formData, setFormData] = useState({
     name: product?.name || "",
-    category: product?.category || "embroidery",
+    category: product?.category || "",
     description: product?.description || "",
     basePrice: product?.basePrice || 0,
     customizable: product?.customizable ?? true,
@@ -1069,6 +1645,74 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
     inStock: product?.inStock ?? true,
     featured: product?.featured ?? false,
   });
+
+  const selectOptions = useMemo(() => {
+    const base = categories;
+    if (product?.category && !base.some((x) => x.slug === product.category)) {
+      return [
+        {
+          slug: product.category,
+          label: `${product.category} (on product)`,
+          emoji: "📦",
+        },
+        ...base,
+      ];
+    }
+    return base;
+  }, [categories, product?.category]);
+
+  useEffect(() => {
+    if (selectOptions.length === 0) return;
+    setFormData((prev) => {
+      if (selectOptions.some((o) => o.slug === prev.category)) return prev;
+      return { ...prev, category: selectOptions[0]!.slug };
+    });
+  }, [selectOptions]);
+
+  useEffect(() => {
+    void onCategoriesChanged();
+  }, [onCategoriesChanged]);
+
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCatLabel, setNewCatLabel] = useState("");
+  const [newCatEmoji, setNewCatEmoji] = useState("");
+  const [addingCategory, setAddingCategory] = useState(false);
+
+  const submitNewCategory = async () => {
+    const label = newCatLabel.trim();
+    if (!label) {
+      alert("Enter a category name.");
+      return;
+    }
+    setAddingCategory(true);
+    try {
+      const r = await fetch("/api/admin/product-categories", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label,
+          ...(newCatEmoji.trim() ? { emoji: newCatEmoji.trim() } : {}),
+        }),
+      });
+      const j = await r.json();
+      if (!j.success) {
+        alert(j.error || "Could not add category");
+        return;
+      }
+      await onCategoriesChanged();
+      if (j.category?.slug) {
+        setFormData((prev) => ({ ...prev, category: String(j.category.slug) }));
+      }
+      setNewCatLabel("");
+      setNewCatEmoji("");
+      setShowAddCategory(false);
+    } catch {
+      alert("Network error");
+    } finally {
+      setAddingCategory(false);
+    }
+  };
 
   const [saving, setSaving] = useState(false);
   const [uploadMethod, setUploadMethod] = useState<"url" | "file">("url");
@@ -1211,6 +1855,10 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.category.trim()) {
+      alert("Categories are still loading or missing. Wait a moment and try again.");
+      return;
+    }
     setSaving(true);
 
     const payload = {
@@ -1297,24 +1945,74 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
             <label className="block text-sm font-medium text-text-dark mb-1">
               Category
             </label>
-            <select
-              value={formData.category}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  category: e.target.value as
-                    | "embroidery"
-                    | "hanky"
-                    | "accessories",
-                })
-              }
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-rose"
-              required
-            >
-              <option value="embroidery">Embroidery</option>
-              <option value="hanky">Hanky</option>
-              <option value="accessories">Accessories</option>
-            </select>
+            {selectOptions.length === 0 ? (
+              <p className="text-sm text-text-light py-2 border border-dashed border-gray-200 rounded-lg px-3">
+                Loading categories… If this persists, reload the admin page.
+              </p>
+            ) : (
+              <select
+                value={
+                  selectOptions.some((o) => o.slug === formData.category)
+                    ? formData.category
+                    : selectOptions[0]!.slug
+                }
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    category: e.target.value,
+                  })
+                }
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-rose"
+                required
+              >
+                {selectOptions.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.emoji} {c.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="mt-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowAddCategory((v) => !v)}
+                className="text-xs font-medium text-rose hover:underline"
+              >
+                {showAddCategory ? "Hide" : "+ Add new category"}
+              </button>
+              {showAddCategory && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2">
+                  <p className="text-[11px] text-text-light leading-snug">
+                    Creates a new shop category (name and optional emoji). It
+                    appears here and on the storefront category filters.
+                  </p>
+                  <input
+                    type="text"
+                    value={newCatLabel}
+                    onChange={(e) => setNewCatLabel(e.target.value)}
+                    placeholder="Category name (e.g. Gift boxes)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-rose bg-white"
+                    maxLength={80}
+                  />
+                  <input
+                    type="text"
+                    value={newCatEmoji}
+                    onChange={(e) => setNewCatEmoji(e.target.value)}
+                    placeholder="Emoji (optional, e.g. 🎁)"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-rose bg-white"
+                    maxLength={8}
+                  />
+                  <button
+                    type="button"
+                    disabled={addingCategory}
+                    onClick={() => void submitNewCategory()}
+                    className="w-full sm:w-auto px-4 py-2 rounded-lg bg-rose text-white text-sm font-medium hover:opacity-95 disabled:opacity-50"
+                  >
+                    {addingCategory ? "Saving…" : "Save category"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div>

@@ -1,144 +1,104 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
-import {
-  FaInstagram,
-  FaYoutube,
-  FaPlus,
-  FaTimes,
-} from "react-icons/fa";
+import { motion } from "framer-motion";
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { FaInstagram, FaComments } from "react-icons/fa";
+import { MdOutlineAdminPanelSettings } from "react-icons/md";
 import { INSTAGRAM_PROFILE_URL } from "@/lib/siteContact";
+import { useCustomerChat } from "@/components/CustomerChat";
 
 export default function FloatingButtons() {
+  const pathname = usePathname();
+  const chat = useCustomerChat();
   const [isVisible, setIsVisible] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const floatingRef = useRef<HTMLDivElement>(null);
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+
+  const refreshAdminSession = useCallback(async () => {
+    try {
+      const r = await fetch("/api/admin/session", { cache: "no-store" });
+      const j = (await r.json()) as { authenticated?: boolean };
+      setAdminAuthenticated(Boolean(j.authenticated));
+    } catch {
+      setAdminAuthenticated(false);
+    }
+  }, []);
 
   useEffect(() => {
     setIsVisible(true);
   }, []);
 
-  // Close when clicking outside - improved for mobile
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (
-        floatingRef.current &&
-        !floatingRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    };
+    void refreshAdminSession();
+  }, [pathname, refreshAdminSession]);
 
-    // Add both mouse and touch events for better mobile support
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("touchend", handleClickOutside);
+  useEffect(() => {
+    const onFocus = () => void refreshAdminSession();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshAdminSession]);
 
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchend", handleClickOutside);
-    };
-  }, []);
+  if (pathname?.startsWith("/secure/admin")) {
+    return null;
+  }
 
   const handleInstagramClick = () => {
     window.open(INSTAGRAM_PROFILE_URL, "_blank", "noopener,noreferrer");
-    setTimeout(() => setIsOpen(false), 1000);
-  };
-
-  const handleYoutubeClick = () => {
-    window.open(
-      "https://youtube.com/@choudharyvi?si=ZlRQkWqhotZb_0LO",
-      "_blank"
-    );
-    setTimeout(() => setIsOpen(false), 1000);
-  };
-
-  const toggleMenu = () => {
-    setIsOpen(!isOpen);
   };
 
   return (
-    <div ref={floatingRef} className="fixed bottom-6 right-6 z-50">
-      <AnimatePresence>
-        {/* Social Media Buttons */}
-        {isOpen && (
-          <motion.div
-            className="flex flex-col gap-3 mb-3"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">
+      <motion.div
+        initial={{ opacity: 0, scale: 0 }}
+        animate={{
+          opacity: isVisible ? 1 : 0,
+          scale: isVisible ? 1 : 0,
+        }}
+        transition={{ duration: 0.25 }}
+      >
+        {adminAuthenticated ? (
+          <Link
+            href="/secure/admin/vishakha"
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-text-dark text-white shadow-lg hover:bg-text-dark/90 transition-colors touch-manipulation"
+            title="Admin panel"
+            aria-label="Open admin panel"
           >
-            {/* Instagram */}
-            <motion.button
-              onClick={handleInstagramClick}
-              className="w-12 h-12 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center touch-manipulation"
-              whileHover={{ scale: 1.1, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              initial={{ opacity: 0, scale: 0, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0, y: 20 }}
-              transition={{ duration: 0.2 }}
-            >
-              <FaInstagram className="text-xl" />
-            </motion.button>
-
-            {/* YouTube */}
-            <motion.button
-              onClick={handleYoutubeClick}
-              className="w-12 h-12 bg-red-600 text-white rounded-full shadow-lg hover:bg-red-700 transition-all flex items-center justify-center touch-manipulation"
-              whileHover={{ scale: 1.1, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              initial={{ opacity: 0, scale: 0, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0, y: 20 }}
-              transition={{ duration: 0.2, delay: 0.1 }}
-            >
-              <FaYoutube className="text-xl" />
-            </motion.button>
-
-            {/* Email */}
-            {/* <motion.button
-              onClick={handleEmailClick}
-              className="w-12 h-12 bg-gray-600 text-white rounded-full shadow-lg hover:bg-gray-700 transition-all flex items-center justify-center touch-manipulation"
-              whileHover={{ scale: 1.1, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              initial={{ opacity: 0, scale: 0, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0, y: 20 }}
-              transition={{ duration: 0.2, delay: 0.2 }}
-            >
-              <FaEnvelope className="text-xl" />
-            </motion.button> */}
-          </motion.div>
+            <MdOutlineAdminPanelSettings className="text-2xl" />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void chat?.openChatPanel()}
+            className="relative w-12 h-12 bg-rose text-white rounded-full shadow-lg hover:bg-rose-dark transition-all flex items-center justify-center touch-manipulation"
+            aria-label="Chat with StichKala about orders or payments"
+          >
+            <FaComments className="text-xl" />
+            {(chat?.unreadTotal ?? 0) > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-white text-rose text-[10px] font-bold flex items-center justify-center border-2 border-rose shadow-sm">
+                {(chat?.unreadTotal ?? 0) > 9 ? "9+" : chat?.unreadTotal}
+              </span>
+            )}
+          </button>
         )}
-      </AnimatePresence>
+      </motion.div>
 
-      {/* Toggle Button */}
       <motion.button
-        onClick={toggleMenu}
-        className={`w-14 h-14 flex items-center justify-center rounded-full shadow-lg hover:shadow-xl transition-all touch-manipulation ${
-          isOpen
-            ? "bg-rose text-white hover:bg-rose-dark"
-            : "bg-white text-rose border border-rose hover:bg-rose hover:text-white"
-        }`}
-        whileHover={{ scale: 1.1 }}
+        type="button"
+        onClick={handleInstagramClick}
+        className="w-12 h-12 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center touch-manipulation"
+        whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         initial={{ opacity: 0, scale: 0 }}
         animate={{
           opacity: isVisible ? 1 : 0,
           scale: isVisible ? 1 : 0,
-          rotate: isOpen ? 90 : 0,
         }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: 0.25, delay: 0.05 }}
+        aria-label="Open StichKala on Instagram"
       >
-        {isOpen ? (
-          <FaTimes className="text-xl" />
-        ) : (
-          <FaPlus className="text-xl" />
-        )}
+        <FaInstagram className="text-xl" />
       </motion.button>
-
-      {/* Remove the backdrop completely as it was causing issues */}
     </div>
   );
 }

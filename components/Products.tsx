@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { GiSewingNeedle, GiLipstick } from "react-icons/gi";
 import { GiHairStrands } from "react-icons/gi";
-import { X, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ArrowRight, MessageCircle } from "lucide-react";
 import CustomizationModal from "./CustomizationModal";
 import { useRouter } from "next/navigation";
+import { useCustomerChat } from "@/components/CustomerChat";
 
 interface Product {
   _id: string;
@@ -25,6 +26,7 @@ interface Product {
 }
 
 export default function Products() {
+  const chat = useCustomerChat();
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -67,6 +69,21 @@ export default function Products() {
   const handleCustomize = (product: Product) => {
     setCustomizationProduct(product);
     handleCloseModal();
+  };
+
+  const handleChatAboutProduct = async () => {
+    if (!selectedProduct) return;
+    const ok = await chat?.sendProductLinkInChatSilent?.({
+      _id: selectedProduct._id,
+      name: selectedProduct.name,
+    });
+    if (ok) {
+      handleCloseModal();
+    } else {
+      alert(
+        "Could not send this product to chat. Try the floating chat button, then use Chat again."
+      );
+    }
   };
 
   // Auto-scroll for modal images
@@ -369,6 +386,7 @@ export default function Products() {
                   return (
                     <motion.div
                       key={product._id}
+                      id={`product-card-${product._id}`}
                       initial={{ opacity: 0, y: 30 }}
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
@@ -427,6 +445,21 @@ export default function Products() {
 
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300" />
+
+                        <button
+                          type="button"
+                          aria-label={`Chat about ${product.name}`}
+                          className="absolute bottom-2 right-2 z-[5] w-9 h-9 rounded-full bg-white/95 text-rose shadow-md flex items-center justify-center hover:bg-rose hover:text-white transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            chat?.offerProductChat({
+                              _id: product._id,
+                              name: product.name,
+                            });
+                          }}
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                        </button>
                       </div>
 
                       {/* Product Info */}
@@ -694,10 +727,11 @@ export default function Products() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-3 sm:pt-4">
                     <motion.button
+                      type="button"
                       onClick={() => handleCustomize(selectedProduct)}
-                      className="flex-1 px-4 py-3 sm:px-6 sm:py-4 bg-rose text-white rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
+                      className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-rose text-white rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -706,8 +740,19 @@ export default function Products() {
                         : "Order Now"}
                     </motion.button>
                     <motion.button
+                      type="button"
+                      onClick={() => void handleChatAboutProduct()}
+                      className="w-full px-4 py-3 sm:px-6 sm:py-4 border-2 border-rose text-rose bg-white rounded-xl sm:rounded-2xl font-medium hover:bg-rose/5 transition-all text-sm sm:text-base inline-flex items-center justify-center gap-2"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <MessageCircle className="w-5 h-5 shrink-0" />
+                      Chat
+                    </motion.button>
+                    <motion.button
+                      type="button"
                       onClick={handleCloseModal}
-                      className="flex-1 px-4 py-3 sm:px-6 sm:py-4 bg-gray-100 text-text-dark rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
+                      className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-gray-100 text-text-dark rounded-xl sm:rounded-2xl font-medium hover:shadow-lg transition-all text-sm sm:text-base"
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                     >

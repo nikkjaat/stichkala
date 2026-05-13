@@ -213,7 +213,7 @@ EMAIL_USER=your_email@gmail.com
 EMAIL_PASSWORD=your_app_password
 
 # Site URL
-NEXT_PUBLIC_SITE_URL=https://stichkala.vercel.app
+NEXT_PUBLIC_SITE_URL=https://vishakhabaliyan.vercel.app
 ```
 
 ### UPI Details

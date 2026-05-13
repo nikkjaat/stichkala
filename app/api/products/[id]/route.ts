@@ -1,7 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
+import mongoose from 'mongoose';
 import { deleteImageByUrl } from '@/lib/cloudinary';
+
+/** Public read for storefront / chat preview. Optional threadId+clientId returns active negotiated offer for that product. */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await connectDB();
+    const product = await Product.findById(params.id).lean();
+    if (!product) {
+      return NextResponse.json(
+        { success: false, error: 'Product not found' },
+        { status: 404 }
+      );
+    }
+
+    const threadId = request.nextUrl.searchParams.get('threadId')?.trim();
+    const clientId = request.nextUrl.searchParams.get('clientId')?.trim();
+    let negotiatedOffer: {
+      amountRupees: number;
+      listPriceRupees: number;
+      payToken: string;
+      expiresAt: string;
+    } | null = null;
+
+    if (
+      threadId &&
+      clientId &&
+      mongoose.Types.ObjectId.isValid(threadId) &&
+      mongoose.Types.ObjectId.isValid(params.id)
+    ) {
+      const ChatThread = (await import('@/models/ChatThread')).default;
+      const th = await ChatThread.findById(threadId).lean();
+      const pid = String(params.id);
+      if (
+        th &&
+        th.clientId === clientId &&
+        th.payOfferToken &&
+        !th.payOfferUsedAt &&
+        th.payOfferExpiresAt &&
+        new Date(th.payOfferExpiresAt).getTime() > Date.now() &&
+        th.payOfferProductId &&
+        String(th.payOfferProductId) === pid &&
+        typeof th.payOfferAmountRupees === 'number'
+      ) {
+        const list =
+          typeof th.payOfferListPriceRupees === 'number'
+            ? th.payOfferListPriceRupees
+            : Math.round(Number(product.basePrice) * 100) / 100;
+        negotiatedOffer = {
+          amountRupees: th.payOfferAmountRupees,
+          listPriceRupees: list,
+          payToken: th.payOfferToken,
+          expiresAt: new Date(th.payOfferExpiresAt).toISOString(),
+        };
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      product,
+      ...(negotiatedOffer ? { negotiatedOffer } : {}),
+    });
+  } catch (error) {
+    console.error('Error fetching product:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch product' },
+      { status: 500 }
+    );
+  }
+}
 
 export async function PUT(
   request: NextRequest,

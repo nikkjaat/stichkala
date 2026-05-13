@@ -34,12 +34,35 @@ export default function Shop() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const categories = [
-    { id: "all", name: "All Products", emoji: "✨" },
-    { id: "embroidery", name: "Embroidery Hoops", emoji: "🧵" },
-    { id: "hanky", name: "Hand-painted Hankies", emoji: "🌈" },
-    { id: "accessories", name: "Hair Accessories", emoji: "🎀" },
-  ];
+  const [categories, setCategories] = useState<
+    { id: string; name: string; emoji: string }[]
+  >([{ id: "all", name: "All Products", emoji: "✨" }]);
+
+  useEffect(() => {
+    void fetch("/api/product-categories")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.success || !Array.isArray(j.categories)) return;
+        setCategories([
+          { id: "all", name: "All Products", emoji: "✨" },
+          ...j.categories.map(
+            (c: { slug: string; label: string; emoji?: string }) => ({
+              id: c.slug,
+              name: c.label,
+              emoji: c.emoji || "📦",
+            })
+          ),
+        ]);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (selectedCategory === "all") return;
+    if (!categories.some((c) => c.id === selectedCategory)) {
+      setSelectedCategory("all");
+    }
+  }, [categories, selectedCategory]);
 
   // Sample products data (in real app, this would come from API)
   const sampleProducts: Product[] = [

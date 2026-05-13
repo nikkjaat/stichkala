@@ -4,6 +4,7 @@ import { Playfair_Display, Poppins } from "next/font/google";
 import Script from "next/script";
 import Navbar from "@/components/Navbar";
 import FloatingButtons from "@/components/FloatingButtons";
+import { CustomerChatProvider } from "@/components/CustomerChat";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -23,7 +24,8 @@ export const metadata: Metadata = {
   description:
     "Beautiful handmade gifts including personalised embroidery hoops, hand-painted hankies, and cute hair accessories. Each piece crafted with love.",
   icons: {
-    icon: "/logo.png",
+    icon: [{ url: "/next.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/next.svg", type: "image/svg+xml" }],
   },
 };
 
@@ -40,9 +42,11 @@ export default function RootLayout({
           strategy="lazyOnload"
           async
         />
-        <Navbar />
-        {children}
-        <FloatingButtons />
+        <CustomerChatProvider>
+          <Navbar />
+          {children}
+          <FloatingButtons />
+        </CustomerChatProvider>
       </body>
     </html>
   );

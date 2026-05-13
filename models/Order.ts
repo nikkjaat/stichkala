@@ -20,6 +20,8 @@ interface IOrder {
     productName?: string;
     quantity: number;
     price: number;
+    /** Catalog price before chat / negotiated discount (optional). */
+    originalListPrice?: number;
     customization?: {
       text?: string;
       color?: string;
@@ -51,6 +53,8 @@ interface IOrder {
   actualDelivery?: Date;
   trackingNumber?: string;
   notes?: string;
+  /** Visitor chat client id (browser) for post-order admin messages in chat. */
+  visitorChatClientId?: string;
 }
 
 const OrderSchema = new mongoose.Schema(
@@ -100,6 +104,7 @@ const OrderSchema = new mongoose.Schema(
           type: Number,
           required: true,
         },
+        originalListPrice: Number,
         customization: {
           text: String,
           color: String,
@@ -148,6 +153,7 @@ const OrderSchema = new mongoose.Schema(
     actualDelivery: Date,
     trackingNumber: String,
     notes: String,
+    visitorChatClientId: { type: String, index: true, sparse: true },
   },
   {
     timestamps: true,

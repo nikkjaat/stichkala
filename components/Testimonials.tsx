@@ -5,17 +5,17 @@ import { useState } from "react";
 
 const testimonials = [
   {
-    name: "Sarah Johnson",
+    name: "Preeti",
     text: "The embroidery hoop I ordered was absolutely stunning! The attention to detail was incredible, and it made the perfect gift for my best friend's wedding.",
     rating: 5,
   },
   {
-    name: "Emily Chen",
+    name: "Rohit Dhaka",
     text: "I've never seen such beautiful hand-painted hankies. They're delicate, thoughtful, and arrived perfectly packaged. Will definitely order again!",
     rating: 5,
   },
   {
-    name: "Lisa Martinez",
+    name: "Amita Choudhary",
     text: "The hair accessories are adorable! My daughter wears them every day. The quality is outstanding and they hold up beautifully.",
     rating: 5,
   },

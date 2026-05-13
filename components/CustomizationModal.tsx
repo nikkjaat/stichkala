@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import QRCode from "qrcode";
 import {
   FaTimes,
@@ -13,6 +13,8 @@ import {
 } from "react-icons/fa";
 import { buildUpiPaymentUri, formatUpiAmount } from "@/lib/upi";
 import { getInstagramDmUrl } from "@/lib/siteContact";
+import { CHECKOUT_DRAFT_STORAGE_KEY } from "@/lib/checkoutDraft";
+import { getChatClientId } from "@/lib/chatClientId";
 
 interface Product {
   _id: string;
@@ -32,11 +34,20 @@ interface Product {
 interface CustomizationModalProps {
   product: Product;
   onClose: () => void;
+  /** Chat-agreed unit price: UPI checkout only (no Razorpay). */
+  negotiatedCheckout?: {
+    payToken: string;
+    threadId: string;
+    clientId: string;
+    revisedUnitPriceRupees: number;
+    listPriceRupees?: number;
+  };
 }
 
 export default function CustomizationModal({
   product,
   onClose,
+  negotiatedCheckout,
 }: CustomizationModalProps) {
   const [formData, setFormData] = useState({
     customerInfo: {
@@ -62,9 +73,6 @@ export default function CustomizationModal({
   });
 
   const [currentStep, setCurrentStep] = useState(product.customizable ? 1 : 1);
-  const [loading, setLoading] = useState(false);
-  const [orderPlaced, setOrderPlaced] = useState(false);
-  const [orderNumber, setOrderNumber] = useState("");
   const [copied, setCopied] = useState(false);
   const [upiQrDataUrl, setUpiQrDataUrl] = useState<string>("");
 
@@ -75,66 +83,6 @@ export default function CustomizationModal({
     bankName: "State Bank of India",
     accountName: UPI_PAYEE_NAME,
   };
-
-  const totalForUpi = useMemo(() => {
-    let total = product.basePrice * formData.quantity;
-    if (formData.giftWrap) total += 50;
-    if (total < 500) total += 50;
-    return total;
-  }, [product.basePrice, formData.quantity, formData.giftWrap]);
-
-  const upiPayUri = useMemo(
-    () =>
-      buildUpiPaymentUri({
-        payeeAddress: UPI_VPA,
-        payeeName: UPI_PAYEE_NAME,
-        amount: formatUpiAmount(totalForUpi),
-        currency: "INR",
-        transactionNote: "StichKala",
-      }),
-    [UPI_VPA, UPI_PAYEE_NAME, totalForUpi]
-  );
-
-  const upiPayUriWithOrder = useMemo(
-    () =>
-      buildUpiPaymentUri({
-        payeeAddress: UPI_VPA,
-        payeeName: UPI_PAYEE_NAME,
-        amount: formatUpiAmount(totalForUpi),
-        currency: "INR",
-        transactionNote: orderNumber || "StichKala",
-      }),
-    [UPI_VPA, UPI_PAYEE_NAME, totalForUpi, orderNumber]
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    QRCode.toDataURL(upiPayUri, {
-      width: 220,
-      margin: 2,
-      errorCorrectionLevel: "M",
-    })
-      .then((url) => {
-        if (!cancelled) setUpiQrDataUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setUpiQrDataUrl("");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [upiPayUri]);
-
-  // Keep API field in sync (orders still store whatsappNumber for legacy data).
-  useEffect(() => {
-    setFormData((prev) => ({
-      ...prev,
-      customerInfo: {
-        ...prev.customerInfo,
-        whatsappNumber: prev.customerInfo.phone,
-      },
-    }));
-  }, [formData.customerInfo.phone]);
 
   const handleInputChange = (
     section: string,
@@ -176,71 +124,124 @@ export default function CustomizationModal({
     }
   };
 
-  const calculateTotal = () => {
-    let total = product.basePrice * formData.quantity;
+  const calculateTotal = useCallback(() => {
+    let total = negotiatedCheckout
+      ? negotiatedCheckout.revisedUnitPriceRupees * formData.quantity
+      : product.basePrice * formData.quantity;
     if (formData.giftWrap) total += 50;
-    if (total < 500) total += 50; // Delivery charges
-    return total;
-  };
+    if (!negotiatedCheckout && total < 500) total += 50;
+    return Math.round(total * 100) / 100;
+  }, [
+    negotiatedCheckout,
+    product.basePrice,
+    formData.quantity,
+    formData.giftWrap,
+  ]);
+
+  const totalForUpi = calculateTotal();
+
+  const upiPayUri = useMemo(
+    () =>
+      buildUpiPaymentUri({
+        payeeAddress: UPI_VPA,
+        payeeName: UPI_PAYEE_NAME,
+        amount: formatUpiAmount(totalForUpi),
+        currency: "INR",
+        transactionNote: "StichKala",
+      }),
+    [UPI_VPA, UPI_PAYEE_NAME, totalForUpi]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(upiPayUri, {
+      width: 220,
+      margin: 2,
+      errorCorrectionLevel: "M",
+    })
+      .then((url) => {
+        if (!cancelled) setUpiQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setUpiQrDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [upiPayUri]);
+
+  // Keep API field in sync (orders still store whatsappNumber for legacy data).
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      customerInfo: {
+        ...prev.customerInfo,
+        whatsappNumber: prev.customerInfo.phone,
+      },
+    }));
+  }, [formData.customerInfo.phone]);
 
   const validateForm = () => {
     const { name, phone, address } = formData.customerInfo;
     if (
-      !name ||
-      !phone ||
-      !address.street ||
-      !address.city ||
-      !address.state ||
-      !address.pincode
+      !name.trim() ||
+      !phone.trim() ||
+      !address.street.trim() ||
+      !address.city.trim() ||
+      !address.state.trim() ||
+      !address.pincode.trim()
     ) {
-      alert("Please fill all required fields");
+      alert(
+        "Please fill all mandatory fields marked with * before continuing."
+      );
       return false;
     }
     return true;
   };
 
-  const handleUPIPayment = async () => {
+  /** Save checkout draft, open UPI (new tab), then send shopper to payment verification. */
+  const handlePayNowUpi = () => {
     if (!validateForm()) return;
 
-    setLoading(true);
-    try {
-      // Create order on backend
-      const orderData = {
-        customerInfo: formData.customerInfo,
-        items: [
-          {
-            productId: product._id,
-            quantity: formData.quantity,
-            customization: product.customizable ? formData.customization : {},
-          },
-        ],
-        totalAmount: calculateTotal(),
-        paymentMethod: "upi",
-        paymentStatus: "pending",
-      };
-
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+    const draft: Record<string, unknown> = {
+      version: 1 as const,
+      draftStartedAt: Date.now(),
+      upiPayUri,
+      productId: product._id,
+      productName: product.name,
+      productImage: product.images[0],
+      customerInfo: formData.customerInfo,
+      items: [
+        {
+          productId: product._id,
+          quantity: formData.quantity,
+          customization: product.customizable ? formData.customization : {},
         },
-        body: JSON.stringify(orderData),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setOrderNumber(result.order.orderNumber);
-        setOrderPlaced(true);
-      } else {
-        alert("Failed to create order. Please try again.");
+      ],
+      totalAmount: calculateTotal(),
+    };
+    const cid = getChatClientId();
+    if (cid) draft.chatClientId = cid;
+    if (negotiatedCheckout) {
+      draft.chatPayToken = negotiatedCheckout.payToken;
+      draft.chatThreadId = negotiatedCheckout.threadId;
+      draft.chatClientId = negotiatedCheckout.clientId;
+      if (typeof negotiatedCheckout.listPriceRupees === "number") {
+        draft.chatListPriceRupees = negotiatedCheckout.listPriceRupees;
       }
-    } catch (error) {
-      console.error("Error creating order:", error);
-      alert("Failed to create order. Please try again.");
-    } finally {
-      setLoading(false);
     }
+
+    try {
+      sessionStorage.setItem(CHECKOUT_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      alert(
+        "Could not save your checkout. Please allow storage and try again."
+      );
+      return;
+    }
+
+    window.open(upiPayUri, "_blank", "noopener,noreferrer");
+    window.location.href = `${window.location.origin}/payment-pending`;
   };
 
   const copyToClipboard = (text: string) => {
@@ -255,9 +256,7 @@ export default function CustomizationModal({
       ? [
           `Customization: ${formData.customization.text}`,
           `Size: ${formData.customization.size}${
-            product.options.sizeUnit
-              ? ` (${product.options.sizeUnit})`
-              : ""
+            product.options.sizeUnit ? ` (${product.options.sizeUnit})` : ""
           }`,
           `Material: ${formData.customization.material}`,
           `Special Instructions: ${formData.customization.specialInstructions}`,
@@ -294,88 +293,34 @@ export default function CustomizationModal({
     void openInstagramWithMessage(buildInstagramOrderMessage());
   };
 
-  const buildPaymentConfirmationMessage = () =>
-    `Hi! I placed order ${orderNumber}. I paid ₹${calculateTotal()} via UPI. Please confirm — UPI / bank ref: [paste here]`;
-
   const totalSteps = product.customizable ? 3 : 2;
   const stepLabels = product.customizable
     ? ["Customize", "Address", "Payment"]
     : ["Address", "Payment"];
 
+  const handleHeaderBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    } else {
+      onClose();
+    }
+  };
+
+  const goToStepIfAllowed = (step: number) => {
+    if (step <= currentStep) setCurrentStep(step);
+  };
+
+  const isOnAddressStep =
+    (product.customizable && currentStep === 2) ||
+    (!product.customizable && currentStep === 1);
+
+  const handleContinue = () => {
+    if (isOnAddressStep && !validateForm()) return;
+    setCurrentStep((s) => s + 1);
+  };
+
   return (
-    orderPlaced ? (<AnimatePresence>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={onClose}
-        >
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-white rounded-3xl p-6 max-w-sm w-full mx-4 text-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">✅</span>
-            </div>
-            <h3 className="font-serif text-xl text-text-dark mb-3">
-              Order Placed Successfully!
-            </h3>
-            <p className="text-text-light mb-2 text-sm">
-              Your order number is:
-            </p>
-            <p className="font-bold text-lg text-rose mb-4">{orderNumber}</p>
-            <p className="text-xs text-text-light mb-4">
-              Please complete your payment via UPI to confirm your order.
-              We&apos;ll keep you updated on your order status.
-            </p>
-            <div className="space-y-2 mb-4">
-              <a
-                href={upiPayUriWithOrder}
-                className="w-full bg-rose text-white px-6 py-3 rounded-full hover:bg-opacity-90 transition-all font-medium text-sm flex items-center justify-center gap-2"
-              >
-                Pay ₹{calculateTotal()} in UPI app
-              </a>
-              <button
-                type="button"
-                onClick={() =>
-                  copyToClipboard(upiPayUriWithOrder)
-                }
-                className="w-full border-2 border-gray-200 text-text-dark px-6 py-3 rounded-full hover:bg-gray-50 transition-all font-medium text-sm flex items-center justify-center gap-2"
-              >
-                {copied ? <FaCheck size={16} /> : <FaCopy size={16} />}
-                Copy UPI payment link
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  void openInstagramWithMessage(
-                    buildPaymentConfirmationMessage()
-                  )
-                }
-                className="w-full bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white px-6 py-3 rounded-full hover:opacity-95 transition-all font-medium text-sm flex items-center justify-center gap-2"
-              >
-                <FaInstagram size={18} />
-                Send confirmation on Instagram
-              </button>
-              <p className="text-[11px] text-text-light px-1">
-                Your order text is copied when you open Instagram — paste it in
-                the chat if needed.
-              </p>
-              <button
-                onClick={onClose}
-                className="w-full bg-gray-100 text-text-dark px-6 py-3 rounded-full hover:bg-gray-200 transition-all font-medium text-sm"
-              >
-                Continue Shopping
-              </button>
-            </div>
-          </motion.div>
-        </motion.div>
-      </AnimatePresence>
-    ) : (<AnimatePresence>
+    <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -395,10 +340,12 @@ export default function CustomizationModal({
           <div className="sticky top-0 bg-white border-b border-gray-200 p-4 sm:p-6 rounded-t-3xl">
             <div className="flex items-center gap-3">
               <button
-                onClick={onClose}
+                type="button"
+                onClick={handleHeaderBack}
+                aria-label={currentStep > 1 ? "Previous step" : "Close"}
                 className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0"
               >
-                <FaTimes size={14} />
+                <FaArrowLeft size={14} />
               </button>
               <div className="flex-1 min-w-0">
                 <h2 className="font-serif text-lg sm:text-xl text-text-dark truncate">
@@ -408,8 +355,26 @@ export default function CustomizationModal({
                 </h2>
                 <p className="text-text-light text-sm truncate">
                   {product.name}
+                  {negotiatedCheckout && (
+                    <span className="block text-[11px] text-amber-800 mt-0.5 font-normal">
+                      Agreed chat price: ₹{negotiatedCheckout.revisedUnitPriceRupees}
+                      /unit
+                      {negotiatedCheckout.listPriceRupees != null
+                        ? ` (list ₹${negotiatedCheckout.listPriceRupees})`
+                        : ""}{" "}
+                      — pay with UPI below (no card checkout).
+                    </span>
+                  )}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0"
+              >
+                <FaTimes size={14} />
+              </button>
             </div>
 
             {/* Progress Steps - Mobile Optimized */}
@@ -417,18 +382,32 @@ export default function CustomizationModal({
               {Array.from({ length: totalSteps }, (_, i) => i + 1).map(
                 (step) => (
                   <div key={step} className="flex flex-col items-center flex-1">
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
-                        currentStep >= step
-                          ? "bg-rose text-white"
-                          : "bg-gray-200 text-gray-500"
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        goToStepIfAllowed(step);
+                      }}
+                      disabled={step > currentStep}
+                      className={`flex flex-col items-center w-full ${
+                        step <= currentStep
+                          ? "cursor-pointer"
+                          : "cursor-default opacity-70"
                       }`}
                     >
-                      {step}
-                    </div>
-                    <span className="text-xs font-medium text-gray-600 mt-1 text-center">
-                      {stepLabels[step - 1]}
-                    </span>
+                      <div
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
+                          currentStep >= step
+                            ? "bg-rose text-white"
+                            : "bg-gray-200 text-gray-500"
+                        }`}
+                      >
+                        {step}
+                      </div>
+                      <span className="text-xs font-medium text-gray-600 mt-1 text-center">
+                        {stepLabels[step - 1]}
+                      </span>
+                    </button>
                     {step < totalSteps && (
                       <div
                         className={`w-full h-1 mt-2 ${
@@ -887,20 +866,21 @@ export default function CustomizationModal({
                     <p className="text-xs text-text-light text-center mb-3">
                       Scan with GPay, PhonePe, Paytm, or any UPI app
                     </p>
-                    <a
-                      href={upiPayUri}
-                      className="w-full max-w-xs bg-rose text-white px-4 py-3 rounded-full hover:bg-opacity-90 transition-all font-medium text-sm text-center"
-                    >
-                      Open in UPI app (₹{calculateTotal()})
-                    </a>
                     <button
+                      type="button"
+                      onClick={handlePayNowUpi}
+                      className="w-full max-w-xs bg-rose text-white px-4 py-3 rounded-full hover:bg-opacity-90 transition-all font-semibold text-sm text-center uppercase tracking-wide"
+                    >
+                      PAY NOW (₹{calculateTotal()})
+                    </button>
+                    {/* <button
                       type="button"
                       onClick={() => copyToClipboard(upiPayUri)}
                       className="mt-2 w-full max-w-xs border-2 border-gray-200 text-text-dark px-4 py-2.5 rounded-full text-sm hover:bg-gray-50 flex items-center justify-center gap-2"
                     >
                       {copied ? <FaCheck size={14} /> : <FaCopy size={14} />}
                       Copy payment link
-                    </button>
+                    </button> */}
                   </div>
 
                   <details className="text-xs text-text-light space-y-2 rounded-lg bg-gray-50 p-3">
@@ -926,56 +906,43 @@ export default function CustomizationModal({
                       After you pay
                     </h5>
                     <div className="space-y-1 text-xs text-text-light">
-                      <p>• Amount is prefilled when you use the button or QR</p>
-                      <p>• Confirm your order on Instagram with your UPI ref</p>
+                      <p>
+                        • Tap <strong>PAY NOW</strong> above — UPI opens in a new
+                        tab; you&apos;ll go straight to the payment confirmation
+                        page.
+                      </p>
+                      <p>
+                        • Enter <strong>UTR and/or a screenshot</strong> (at least
+                        one) within 10 minutes.
+                      </p>
                     </div>
                   </div>
                 </div>
               </motion.div>
             )}
 
-            {/* Footer Buttons - Mobile Optimized */}
-            <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t">
-              <div className="flex gap-3 order-2 sm:order-1">
-                {((product.customizable && currentStep > 1) ||
-                  (!product.customizable && currentStep > 1)) && (
-                  <button
-                    onClick={() => setCurrentStep(currentStep - 1)}
-                    className="flex-1 sm:flex-none sm:px-6 py-3 border-2 border-gray-200 rounded-full hover:bg-gray-50 transition-colors font-medium text-sm flex items-center justify-center gap-2"
-                  >
-                    <FaArrowLeft size={12} />
-                    Back
-                  </button>
-                )}
-              </div>
-
-              <div className="flex gap-3 order-1 sm:order-2">
+            {/* Footer — Continue / Instagram (back is in header) */}
+            <div className="flex justify-stretch mt-6 pt-4 border-t">
+              <div className="flex gap-3 w-full">
                 {(product.customizable && currentStep < 3) ||
                 (!product.customizable && currentStep < 2) ? (
                   <button
-                    onClick={() => setCurrentStep(currentStep + 1)}
+                    type="button"
+                    onClick={handleContinue}
                     className="flex-1 bg-rose text-white px-6 py-3 rounded-full hover:bg-opacity-90 transition-all font-medium text-sm flex items-center justify-center gap-2"
                   >
                     Continue
                     <FaArrowRight size={12} />
                   </button>
                 ) : (
-                  <>
-                    <button
-                      onClick={handleUPIPayment}
-                      disabled={loading}
-                      className="flex-1 bg-rose text-white px-4 py-3 rounded-full hover:bg-opacity-90 transition-all font-medium text-sm disabled:opacity-50"
-                    >
-                      {loading ? "Creating Order..." : "Confirm Order"}
-                    </button>
-                    <button
-                      onClick={handleInstagramOrder}
-                      className="flex items-center gap-2 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white px-4 py-3 rounded-full hover:opacity-95 transition-all font-medium text-sm flex-shrink-0"
-                    >
-                      <FaInstagram size={14} />
-                      <span className="hidden sm:inline">Instagram</span>
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={handleInstagramOrder}
+                    className="flex w-full sm:w-auto items-center justify-center gap-2 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white px-6 py-3 rounded-full hover:opacity-95 transition-all font-medium text-sm"
+                  >
+                    <FaInstagram size={14} />
+                    <span>Instagram</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -983,6 +950,5 @@ export default function CustomizationModal({
         </motion.div>
       </motion.div>
     </AnimatePresence>
-    )
   );
 }
