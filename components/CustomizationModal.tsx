@@ -1,15 +1,18 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import QRCode from "qrcode";
 import {
   FaTimes,
-  FaWhatsapp,
+  FaInstagram,
   FaArrowLeft,
   FaArrowRight,
   FaCopy,
   FaCheck,
 } from "react-icons/fa";
+import { buildUpiPaymentUri, formatUpiAmount } from "@/lib/upi";
+import { getInstagramDmUrl } from "@/lib/siteContact";
 
 interface Product {
   _id: string;
@@ -63,35 +66,75 @@ export default function CustomizationModal({
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
   const [copied, setCopied] = useState(false);
-  const [sameAsPhone, setSameAsPhone] = useState(true);
+  const [upiQrDataUrl, setUpiQrDataUrl] = useState<string>("");
 
-  // UPI Payment Details
-  const upiDetails = {
-    upiId: "vishakha-c@ptyes",
-    qrCode: "/qr-code.jpg",
+  const UPI_VPA = process.env.NEXT_PUBLIC_UPI_ID ?? "vishakha-c@ptyes";
+  const UPI_PAYEE_NAME =
+    process.env.NEXT_PUBLIC_UPI_PAYEE_NAME ?? "Vishakha Chaudhary";
+  const bankMeta = {
     bankName: "State Bank of India",
-    accountName: "Vishakha Chaudhary",
+    accountName: UPI_PAYEE_NAME,
   };
 
-  // Auto-fill WhatsApp number when phone number changes
-  useEffect(() => {
-    if (sameAsPhone && formData.customerInfo.phone) {
-      setFormData((prev) => ({
-        ...prev,
-        customerInfo: {
-          ...prev.customerInfo,
-          whatsappNumber: prev.customerInfo.phone,
-        },
-      }));
-    }
-  }, [formData.customerInfo.phone, sameAsPhone]);
+  const totalForUpi = useMemo(() => {
+    let total = product.basePrice * formData.quantity;
+    if (formData.giftWrap) total += 50;
+    if (total < 500) total += 50;
+    return total;
+  }, [product.basePrice, formData.quantity, formData.giftWrap]);
 
-  // Reset sameAsPhone when user manually changes WhatsApp number
+  const upiPayUri = useMemo(
+    () =>
+      buildUpiPaymentUri({
+        payeeAddress: UPI_VPA,
+        payeeName: UPI_PAYEE_NAME,
+        amount: formatUpiAmount(totalForUpi),
+        currency: "INR",
+        transactionNote: "StichKala",
+      }),
+    [UPI_VPA, UPI_PAYEE_NAME, totalForUpi]
+  );
+
+  const upiPayUriWithOrder = useMemo(
+    () =>
+      buildUpiPaymentUri({
+        payeeAddress: UPI_VPA,
+        payeeName: UPI_PAYEE_NAME,
+        amount: formatUpiAmount(totalForUpi),
+        currency: "INR",
+        transactionNote: orderNumber || "StichKala",
+      }),
+    [UPI_VPA, UPI_PAYEE_NAME, totalForUpi, orderNumber]
+  );
+
   useEffect(() => {
-    if (formData.customerInfo.whatsappNumber !== formData.customerInfo.phone) {
-      setSameAsPhone(false);
-    }
-  }, [formData.customerInfo.whatsappNumber, formData.customerInfo.phone]);
+    let cancelled = false;
+    QRCode.toDataURL(upiPayUri, {
+      width: 220,
+      margin: 2,
+      errorCorrectionLevel: "M",
+    })
+      .then((url) => {
+        if (!cancelled) setUpiQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setUpiQrDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [upiPayUri]);
+
+  // Keep API field in sync (orders still store whatsappNumber for legacy data).
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      customerInfo: {
+        ...prev.customerInfo,
+        whatsappNumber: prev.customerInfo.phone,
+      },
+    }));
+  }, [formData.customerInfo.phone]);
 
   const handleInputChange = (
     section: string,
@@ -133,19 +176,6 @@ export default function CustomizationModal({
     }
   };
 
-  const handleSameAsPhoneChange = (checked: boolean) => {
-    setSameAsPhone(checked);
-    if (checked && formData.customerInfo.phone) {
-      setFormData((prev) => ({
-        ...prev,
-        customerInfo: {
-          ...prev.customerInfo,
-          whatsappNumber: prev.customerInfo.phone,
-        },
-      }));
-    }
-  };
-
   const calculateTotal = () => {
     let total = product.basePrice * formData.quantity;
     if (formData.giftWrap) total += 50;
@@ -154,17 +184,16 @@ export default function CustomizationModal({
   };
 
   const validateForm = () => {
-    const { name, phone, whatsappNumber, address } = formData.customerInfo;
+    const { name, phone, address } = formData.customerInfo;
     if (
       !name ||
       !phone ||
-      !whatsappNumber ||
       !address.street ||
       !address.city ||
       !address.state ||
       !address.pincode
     ) {
-      alert("Please fill all required fields including WhatsApp number");
+      alert("Please fill all required fields");
       return false;
     }
     return true;
@@ -221,48 +250,60 @@ export default function CustomizationModal({
     });
   };
 
-  const handleWhatsAppOrder = () => {
-    if (!validateForm()) return;
-
-    const message = `Hi! I'd like to order:
-
-Product: ${product.name}
-Quantity: ${formData.quantity}
-${
-  product.customizable
-    ? `Customization: ${formData.customization.text}
-
-Size: ${formData.customization.size} ${
-        product.options.sizeUnit ? `(${product.options.sizeUnit})` : ""
-      }
-Material: ${formData.customization.material}
-Special Instructions: ${formData.customization.specialInstructions}`
-    : ""
-}
-
-Total: ₹${calculateTotal()}
-
-My Details:
-Name: ${formData.customerInfo.name}
-Phone: ${formData.customerInfo.phone}
-WhatsApp: ${formData.customerInfo.whatsappNumber}
-Email: ${formData.customerInfo.email}
-Address: ${formData.customerInfo.address.street}, ${
-      formData.customerInfo.address.city
-    }, ${formData.customerInfo.address.state} - ${
-      formData.customerInfo.address.pincode
-    }`;
-
-    const encodedMessage = encodeURIComponent(message);
-    window.open(
-      `https://wa.me/${process.env.NEXT_PUBLIC_WHATSAPP_NUMBER}?text=${encodedMessage}`,
-      "_blank"
-    );
+  const buildInstagramOrderMessage = () => {
+    const customBlock = product.customizable
+      ? [
+          `Customization: ${formData.customization.text}`,
+          `Size: ${formData.customization.size}${
+            product.options.sizeUnit
+              ? ` (${product.options.sizeUnit})`
+              : ""
+          }`,
+          `Material: ${formData.customization.material}`,
+          `Special Instructions: ${formData.customization.specialInstructions}`,
+        ].join("\n")
+      : "";
+    return [
+      "Hi! I'd like to order:",
+      "",
+      `Product: ${product.name}`,
+      `Quantity: ${formData.quantity}`,
+      customBlock,
+      "",
+      `Total: ₹${calculateTotal()}`,
+      "",
+      "My Details:",
+      `Name: ${formData.customerInfo.name}`,
+      `Phone: ${formData.customerInfo.phone}`,
+      `Email: ${formData.customerInfo.email}`,
+      `Address: ${formData.customerInfo.address.street}, ${formData.customerInfo.address.city}, ${formData.customerInfo.address.state} - ${formData.customerInfo.address.pincode}`,
+    ].join("\n");
   };
 
-  if (orderPlaced) {
-    return (
-      <AnimatePresence>
+  const openInstagramWithMessage = async (message: string) => {
+    try {
+      await navigator.clipboard.writeText(message);
+    } catch {
+      /* clipboard may be denied */
+    }
+    window.open(getInstagramDmUrl(), "_blank", "noopener,noreferrer");
+  };
+
+  const handleInstagramOrder = () => {
+    if (!validateForm()) return;
+    void openInstagramWithMessage(buildInstagramOrderMessage());
+  };
+
+  const buildPaymentConfirmationMessage = () =>
+    `Hi! I placed order ${orderNumber}. I paid ₹${calculateTotal()} via UPI. Please confirm — UPI / bank ref: [paste here]`;
+
+  const totalSteps = product.customizable ? 3 : 2;
+  const stepLabels = product.customizable
+    ? ["Customize", "Address", "Payment"]
+    : ["Address", "Payment"];
+
+  return (
+    orderPlaced ? (<AnimatePresence>
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -293,21 +334,40 @@ Address: ${formData.customerInfo.address.street}, ${
             </p>
             <div className="space-y-2 mb-4">
               <a
-                href={`https://wa.me/${
-                  process.env.NEXT_PUBLIC_WHATSAPP_NUMBER
-                }?text=${encodeURIComponent(
-                  `Hi! I have placed order ${orderNumber}. I have completed the payment of ₹${calculateTotal()} via UPI. Transaction ID: [Your Transaction ID]`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-green-500 text-white px-6 py-3 rounded-full hover:bg-green-600 transition-all font-medium text-sm flex items-center justify-center gap-2"
+                href={upiPayUriWithOrder}
+                className="w-full bg-rose text-white px-6 py-3 rounded-full hover:bg-opacity-90 transition-all font-medium text-sm flex items-center justify-center gap-2"
               >
-                <FaWhatsapp size={18} />
-                Send Payment Confirmation
+                Pay ₹{calculateTotal()} in UPI app
               </a>
               <button
+                type="button"
+                onClick={() =>
+                  copyToClipboard(upiPayUriWithOrder)
+                }
+                className="w-full border-2 border-gray-200 text-text-dark px-6 py-3 rounded-full hover:bg-gray-50 transition-all font-medium text-sm flex items-center justify-center gap-2"
+              >
+                {copied ? <FaCheck size={16} /> : <FaCopy size={16} />}
+                Copy UPI payment link
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void openInstagramWithMessage(
+                    buildPaymentConfirmationMessage()
+                  )
+                }
+                className="w-full bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white px-6 py-3 rounded-full hover:opacity-95 transition-all font-medium text-sm flex items-center justify-center gap-2"
+              >
+                <FaInstagram size={18} />
+                Send confirmation on Instagram
+              </button>
+              <p className="text-[11px] text-text-light px-1">
+                Your order text is copied when you open Instagram — paste it in
+                the chat if needed.
+              </p>
+              <button
                 onClick={onClose}
-                className="w-full bg-rose text-white px-6 py-3 rounded-full hover:bg-opacity-90 transition-all font-medium text-sm"
+                className="w-full bg-gray-100 text-text-dark px-6 py-3 rounded-full hover:bg-gray-200 transition-all font-medium text-sm"
               >
                 Continue Shopping
               </button>
@@ -315,16 +375,7 @@ Address: ${formData.customerInfo.address.street}, ${
           </motion.div>
         </motion.div>
       </AnimatePresence>
-    );
-  }
-
-  const totalSteps = product.customizable ? 3 : 2;
-  const stepLabels = product.customizable
-    ? ["Customize", "Address", "Payment"]
-    : ["Address", "Payment"];
-
-  return (
-    <AnimatePresence>
+    ) : (<AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -639,68 +690,27 @@ Address: ${formData.customerInfo.address.street}, ${
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-text-dark mb-2">
-                        Phone *
-                      </label>
-                      <input
-                        type="tel"
-                        value={formData.customerInfo.phone}
-                        onChange={(e) =>
-                          handleInputChange(
-                            "customerInfo",
-                            "phone",
-                            e.target.value
-                          )
-                        }
-                        className="w-full px-3 py-2.5 text-sm rounded-xl border-2 border-gray-200 focus:border-rose focus:outline-none transition-colors"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-text-dark mb-2">
-                        WhatsApp *
-                      </label>
-                      <input
-                        type="tel"
-                        value={formData.customerInfo.whatsappNumber}
-                        onChange={(e) =>
-                          handleInputChange(
-                            "customerInfo",
-                            "whatsappNumber",
-                            e.target.value
-                          )
-                        }
-                        disabled={sameAsPhone}
-                        className={`w-full px-3 py-2.5 text-sm rounded-xl border-2 focus:outline-none transition-colors ${
-                          sameAsPhone
-                            ? "bg-gray-100 border-gray-200 text-gray-500"
-                            : "border-gray-200 focus:border-rose"
-                        }`}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Same as Phone Checkbox */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <input
-                      type="checkbox"
-                      id="sameAsPhone"
-                      checked={sameAsPhone}
-                      onChange={(e) =>
-                        handleSameAsPhoneChange(e.target.checked)
-                      }
-                      className="w-4 h-4 text-rose border-gray-300 rounded focus:ring-rose"
-                    />
-                    <label
-                      htmlFor="sameAsPhone"
-                      className="text-sm text-text-dark"
-                    >
-                      WhatsApp number is same as phone number
+                  <div>
+                    <label className="block text-sm font-medium text-text-dark mb-2">
+                      Phone *
                     </label>
+                    <input
+                      type="tel"
+                      value={formData.customerInfo.phone}
+                      onChange={(e) =>
+                        handleInputChange(
+                          "customerInfo",
+                          "phone",
+                          e.target.value
+                        )
+                      }
+                      className="w-full px-3 py-2.5 text-sm rounded-xl border-2 border-gray-200 focus:border-rose focus:outline-none transition-colors"
+                      required
+                    />
+                    <p className="text-xs text-text-light mt-1">
+                      Used for delivery updates. Reach us on Instagram for
+                      questions.
+                    </p>
                   </div>
 
                   <div>
@@ -853,72 +863,71 @@ Address: ${formData.customerInfo.address.street}, ${
                   </div>
                 </div>
 
-                {/* UPI Payment Section */}
+                {/* UPI Payment Section — dynamic UPI deep link + QR */}
                 <div className="bg-white border-2 border-rose rounded-xl p-4">
                   <h4 className="font-medium text-text-dark mb-3 text-center">
                     Pay via UPI
                   </h4>
 
-                  {/* QR Code */}
                   <div className="flex flex-col items-center mb-4">
-                    <div className="bg-white p-3 rounded-lg border-2 border-gray-200 mb-3">
-                      <img
-                        src={upiDetails.qrCode}
-                        alt="UPI QR Code"
-                        className="w-48 h-48 object-contain"
-                      />
-                    </div>
-                    <p className="text-xs text-text-light text-center mb-2">
-                      Scan QR code with any UPI app
+                    {upiQrDataUrl ? (
+                      <div className="bg-white p-3 rounded-lg border-2 border-gray-200 mb-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={upiQrDataUrl}
+                          alt="UPI payment QR code"
+                          className="w-48 h-48 object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-48 h-48 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-xs text-text-light mb-3">
+                        Generating QR…
+                      </div>
+                    )}
+                    <p className="text-xs text-text-light text-center mb-3">
+                      Scan with GPay, PhonePe, Paytm, or any UPI app
                     </p>
+                    <a
+                      href={upiPayUri}
+                      className="w-full max-w-xs bg-rose text-white px-4 py-3 rounded-full hover:bg-opacity-90 transition-all font-medium text-sm text-center"
+                    >
+                      Open in UPI app (₹{calculateTotal()})
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(upiPayUri)}
+                      className="mt-2 w-full max-w-xs border-2 border-gray-200 text-text-dark px-4 py-2.5 rounded-full text-sm hover:bg-gray-50 flex items-center justify-center gap-2"
+                    >
+                      {copied ? <FaCheck size={14} /> : <FaCopy size={14} />}
+                      Copy payment link
+                    </button>
                   </div>
 
-                  {/* UPI ID */}
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-medium text-text-dark mb-2">
-                        Or send payment to UPI ID:
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-gray-100 rounded-lg px-3 py-2.5">
-                          <p className="font-mono text-sm text-text-dark">
-                            {upiDetails.upiId}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => copyToClipboard(upiDetails.upiId)}
-                          className="w-10 h-10 bg-rose text-white rounded-lg flex items-center justify-center hover:bg-opacity-90 transition-colors"
-                        >
-                          {copied ? (
-                            <FaCheck size={14} />
-                          ) : (
-                            <FaCopy size={14} />
-                          )}
-                        </button>
-                      </div>
+                  <details className="text-xs text-text-light space-y-2 rounded-lg bg-gray-50 p-3">
+                    <summary className="cursor-pointer font-medium text-text-dark text-sm">
+                      Manual entry (optional)
+                    </summary>
+                    <p className="mt-2">
+                      Payee VPA is not shown by default. If your app needs it,
+                      copy the payment link above — it contains the same details
+                      as the QR.
+                    </p>
+                    <div className="bg-yellow-50 rounded-lg p-3 mt-2">
+                      <p className="font-medium text-text-dark mb-1">
+                        Bank / account (reference)
+                      </p>
+                      <p>Bank: {bankMeta.bankName}</p>
+                      <p>Account name: {bankMeta.accountName}</p>
                     </div>
+                  </details>
 
-                    <div className="bg-blue-50 rounded-lg p-3">
-                      <h5 className="font-medium text-text-dark mb-1 text-sm">
-                        Payment Instructions:
-                      </h5>
-                      <div className="space-y-1 text-xs text-text-light">
-                        <p>• Scan QR code or use UPI ID above</p>
-                        <p>• Amount: ₹{calculateTotal()}</p>
-                        <p>• Add order number in payment note</p>
-                        <p>• Send screenshot after payment</p>
-                      </div>
-                    </div>
-
-                    <div className="bg-yellow-50 rounded-lg p-3">
-                      <h5 className="font-medium text-text-dark mb-1 text-sm">
-                        Bank Details:
-                      </h5>
-                      <div className="text-xs text-text-light space-y-1">
-                        <p>Bank: {upiDetails.bankName}</p>
-                        <p>Account Name: {upiDetails.accountName}</p>
-                        <p>UPI ID: {upiDetails.upiId}</p>
-                      </div>
+                  <div className="bg-blue-50 rounded-lg p-3 mt-3">
+                    <h5 className="font-medium text-text-dark mb-1 text-sm">
+                      After you pay
+                    </h5>
+                    <div className="space-y-1 text-xs text-text-light">
+                      <p>• Amount is prefilled when you use the button or QR</p>
+                      <p>• Confirm your order on Instagram with your UPI ref</p>
                     </div>
                   </div>
                 </div>
@@ -960,11 +969,11 @@ Address: ${formData.customerInfo.address.street}, ${
                       {loading ? "Creating Order..." : "Confirm Order"}
                     </button>
                     <button
-                      onClick={handleWhatsAppOrder}
-                      className="flex items-center gap-2 bg-green-500 text-white px-4 py-3 rounded-full hover:bg-green-600 transition-all font-medium text-sm flex-shrink-0"
+                      onClick={handleInstagramOrder}
+                      className="flex items-center gap-2 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white px-4 py-3 rounded-full hover:opacity-95 transition-all font-medium text-sm flex-shrink-0"
                     >
-                      <FaWhatsapp size={14} />
-                      <span className="hidden sm:inline">WhatsApp</span>
+                      <FaInstagram size={14} />
+                      <span className="hidden sm:inline">Instagram</span>
                     </button>
                   </>
                 )}
@@ -974,5 +983,6 @@ Address: ${formData.customerInfo.address.street}, ${
         </motion.div>
       </motion.div>
     </AnimatePresence>
+    )
   );
 }

@@ -9,29 +9,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// WhatsApp API configuration (using a service like Twilio or direct WhatsApp Business API)
-const sendWhatsAppMessage = async (to: string, message: string) => {
-  try {
-    // Using Twilio WhatsApp API as an example
-    // You can replace this with your preferred WhatsApp service
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const client = require("twilio")(accountSid, authToken);
-
-    await client.messages.create({
-      body: message,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: `whatsapp:+91${to}`,
-    });
-
-    console.log("WhatsApp message sent successfully");
-  } catch (error) {
-    console.error("WhatsApp message failed:", error);
-    // Fallback: You can implement a simple HTTP request to your WhatsApp service
-    // or use WhatsApp Business API directly
-  }
-};
-
 const sendEmail = async (to: string, subject: string, html: string) => {
   try {
     if (!to) return; // Skip if no email provided
@@ -49,33 +26,11 @@ const sendEmail = async (to: string, subject: string, html: string) => {
   }
 };
 
-export const sendOrderConfirmation = async (order: any, status: string) => {
+export const sendOrderConfirmation = async (order: any, _status: string) => {
   const customerName = order.customerInfo.name;
   const orderNumber = order.orderNumber;
   const totalAmount = order.totalAmount;
-  const whatsappNumber = order.customerInfo.whatsappNumber;
   const email = order.customerInfo.email;
-
-  // WhatsApp message
-  const whatsappMessage = `🎉 Order Confirmed!
-
-Hi ${customerName}!
-
-Your order #${orderNumber} has been confirmed.
-Total Amount: ₹${totalAmount}
-
-Order Details:
-${order.items
-  .map((item: any) => `• ${item.productName} (Qty: ${item.quantity})`)
-  .join("\n")}
-
-Estimated Delivery: ${new Date(order.estimatedDelivery).toLocaleDateString(
-    "en-IN"
-  )}
-
-We'll keep you updated on your order status. Thank you for choosing Handcrafted Gifts! 💝
-
-Track your order: ${process.env.NEXT_PUBLIC_SITE_URL}/track`;
 
   // Email HTML
   const emailHtml = `
@@ -115,7 +70,7 @@ Track your order: ${process.env.NEXT_PUBLIC_SITE_URL}/track`;
           </ul>
         </div>
         
-        <p>We'll send you regular updates about your order status via WhatsApp and email.</p>
+        <p>We'll send you updates about your order status by email. You can also message us on Instagram if you have questions.</p>
         
         <div style="text-align: center; margin: 30px 0;">
           <a href="${process.env.NEXT_PUBLIC_SITE_URL}/track" 
@@ -131,17 +86,12 @@ Track your order: ${process.env.NEXT_PUBLIC_SITE_URL}/track`;
     </div>
   `;
 
-  // Send notifications
-  await Promise.all([
-    sendWhatsAppMessage(whatsappNumber, whatsappMessage),
-    sendEmail(email, `Order Confirmed - ${orderNumber}`, emailHtml),
-  ]);
+  await sendEmail(email, `Order Confirmed - ${orderNumber}`, emailHtml);
 };
 
 export const sendOrderStatusUpdate = async (order: any, newStatus: string) => {
   const customerName = order.customerInfo.name;
   const orderNumber = order.orderNumber;
-  const whatsappNumber = order.customerInfo.whatsappNumber;
   const email = order.customerInfo.email;
 
   const statusMessages = {
@@ -167,27 +117,6 @@ export const sendOrderStatusUpdate = async (order: any, newStatus: string) => {
     statusMessages[newStatus as keyof typeof statusMessages] ||
     "Your order status has been updated.";
   const emoji = statusEmojis[newStatus as keyof typeof statusEmojis] || "📋";
-
-  // WhatsApp message
-  const whatsappMessage = `${emoji} Order Update
-
-Hi ${customerName}!
-
-Order #${orderNumber} - Status Update:
-${message}
-
-${
-  newStatus === "shipped"
-    ? `Track your package and expect delivery within 2-3 days.`
-    : ""
-}
-${
-  newStatus === "delivered"
-    ? `Thank you for choosing Handcrafted Gifts! We'd love to see how you're enjoying your purchase. 📸`
-    : ""
-}
-
-Track your order: https://stichkala.vercel.app/track`;
 
   // Email HTML
   const emailHtml = `
@@ -229,9 +158,54 @@ Track your order: https://stichkala.vercel.app/track`;
     </div>
   `;
 
-  // Send notifications
-  await Promise.all([
-    sendWhatsAppMessage(whatsappNumber, whatsappMessage),
-    sendEmail(email, `Order Update - ${orderNumber}`, emailHtml),
-  ]);
+  await sendEmail(email, `Order Update - ${orderNumber}`, emailHtml);
+};
+
+export const sendAdminNewOrderAlert = async (order: any) => {
+  const subject = `New Order Received - ${order.orderNumber}`;
+  const itemsHtml = order.items
+    .map(
+      (item: any) =>
+        `<li>${item.productName} × ${item.quantity}$${
+          item.customization?.text
+            ? ` <small>(Custom: ${item.customization.text})</small>`
+            : ""
+        }</li>`
+    )
+    .join("");
+
+  const address = order.customerInfo?.address
+    ? `${order.customerInfo.address.street}, ${order.customerInfo.address.city}, ${order.customerInfo.address.state} - ${order.customerInfo.address.pincode}`
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #FFE4E1 0%, #E6E6FA 100%); padding: 24px; text-align: center;">
+        <h2 style="color: #4A4A4A; margin: 0;">New Order Received</h2>
+      </div>
+      <div style="padding: 24px; background: #ffffff;">
+        <p><strong>Order Number:</strong> ${order.orderNumber}</p>
+        <p><strong>Created At:</strong> ${new Date(order.createdAt).toLocaleString("en-IN")}</p>
+        <p><strong>Total Amount:</strong> ₹${order.totalAmount}</p>
+        <p><strong>Payment Method:</strong> ${order.paymentMethod}</p>
+        <p><strong>Status:</strong> ${order.status}</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
+        <p><strong>Customer:</strong> ${order.customerInfo?.name || ""}</p>
+        <p><strong>Email:</strong> ${order.customerInfo?.email || ""}</p>
+        <p><strong>Phone:</strong> ${order.customerInfo?.phone || ""}</p>
+        <p><strong>Contact (legacy field):</strong> ${order.customerInfo?.whatsappNumber || ""}</p>
+        ${address ? `<p><strong>Address:</strong> ${address}</p>` : ""}
+        <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
+        <h3 style="margin: 8px 0; color: #4A4A4A;">Items</h3>
+        <ul>${itemsHtml}</ul>
+        <div style="text-align:center;margin-top:24px;">
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL || ""}/secure/admin/vishakha" style="background:#FFB6C1;color:#fff;padding:10px 20px;border-radius:24px;text-decoration:none;display:inline-block;">Open Admin</a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const to = process.env.EMAIL_USER as string;
+  if (!to) return;
+  await sendEmail(to, subject, html);
 };

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { getInstagramDmUrl } from "@/lib/siteContact";
 
 interface OrderStatus {
   _id: string;
@@ -286,23 +287,23 @@ export default function TrackOrderPage() {
             Need help with your order? We&apos;re here to assist you!
           </p>
           <motion.button
-            onClick={() => {
-              const message = encodeURIComponent(
-                `Hi! I need help tracking my order ${
-                  orderNumber || "[Order Number]"
-                }`
-              );
-              window.open(
-                `https://wa.me/${process.env.NEXT_PUBLIC_WHATSAPP_NUMBER}?text=${message}`,
-                "_blank"
-              );
+            onClick={async () => {
+              const text = `Hi! I need help tracking my order ${
+                orderNumber || "[Order Number]"
+              }`;
+              try {
+                await navigator.clipboard.writeText(text);
+              } catch {
+                /* ignore */
+              }
+              window.open(getInstagramDmUrl(), "_blank", "noopener,noreferrer");
             }}
-            className="bg-green-500 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-full hover:bg-green-600 transition-all font-medium inline-flex items-center gap-2 text-sm sm:text-base"
+            className="bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-full hover:opacity-95 transition-all font-medium inline-flex items-center gap-2 text-sm sm:text-base"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            <span>💬</span>
-            Contact Support
+            <span>📸</span>
+            Contact on Instagram
           </motion.button>
         </motion.div>
       </div>

@@ -14,6 +14,7 @@ import {
   FiPackage,
   FiUser,
   FiDollarSign,
+  
   FiCalendar,
   FiShoppingBag,
   FiMove,
@@ -663,7 +664,7 @@ interface OrderProductsPopupProps {
 
 function OrderProductsPopup({ order, onClose }: OrderProductsPopupProps) {
   const getProductImageForItem = (item: any) => {
-    console.log(item)
+    console.log(item);
     return item.productId?.images?.[0] || "/api/placeholder/120/120";
   };
 
@@ -804,16 +805,16 @@ function OrderProductsPopup({ order, onClose }: OrderProductsPopupProps) {
                   order.status === "pending"
                     ? "bg-yellow-100 text-yellow-800"
                     : order.status === "confirmed"
-                    ? "bg-blue-100 text-blue-800"
-                    : order.status === "in-progress"
-                    ? "bg-purple-100 text-purple-800"
-                    : order.status === "completed"
-                    ? "bg-green-100 text-green-800"
-                    : order.status === "shipped"
-                    ? "bg-teal-100 text-teal-800"
-                    : order.status === "delivered"
-                    ? "bg-green-200 text-green-900"
-                    : "bg-red-100 text-red-800"
+                      ? "bg-blue-100 text-blue-800"
+                      : order.status === "in-progress"
+                        ? "bg-purple-100 text-purple-800"
+                        : order.status === "completed"
+                          ? "bg-green-100 text-green-800"
+                          : order.status === "shipped"
+                            ? "bg-teal-100 text-teal-800"
+                            : order.status === "delivered"
+                              ? "bg-green-200 text-green-900"
+                              : "bg-red-100 text-red-800"
                 }`}
               >
                 {order.status}
@@ -1630,8 +1631,8 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
               {saving
                 ? "Saving..."
                 : product
-                ? "Update Product"
-                : "Add Product"}
+                  ? "Update Product"
+                  : "Add Product"}
             </button>
           </div>
         </form>
