@@ -23,6 +23,20 @@ self.addEventListener("push", function (event) {
   );
 });
 
+function parseNotificationData(raw) {
+  if (raw == null || raw === "") return {};
+  if (typeof raw === "string") {
+    try {
+      var o = JSON.parse(raw);
+      return typeof o === "object" && o ? o : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  if (typeof raw === "object") return raw;
+  return {};
+}
+
 function resolveTargetUrl(raw) {
   var target = typeof raw === "string" && raw.length ? raw : "/";
   if (target.startsWith("/") && self.location && self.location.origin) {
@@ -63,13 +77,22 @@ function postNavigateToClients(target) {
     });
 }
 
-/** Chromium: inline reply text from notification action type "text". */
+/** Chromium / variants: inline reply from notification text action (read before closing notification). */
 function normalizeReplyText(event) {
-  if (typeof event.reply === "string") return Promise.resolve(event.reply);
-  if (event.reply && typeof event.reply.then === "function") {
-    return event.reply.then(function (x) {
-      return String(x || "");
-    });
+  var candidates = [
+    event.reply,
+    event.userReply,
+    event.notification && event.notification.reply,
+    event.notification && event.notification.userReply,
+  ];
+  for (var i = 0; i < candidates.length; i++) {
+    var r = candidates[i];
+    if (typeof r === "string") return Promise.resolve(r);
+    if (r && typeof r.then === "function") {
+      return r.then(function (x) {
+        return String(x || "");
+      });
+    }
   }
   return Promise.resolve("");
 }
@@ -113,10 +136,10 @@ function sendNotifChatMessage(data, text) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body,
-    credentials: isAdmin ? "include" : "same-origin",
+    credentials: "include",
   })
     .then(function (r) {
-      if (!r.ok) return Promise.reject(new Error("send failed"));
+      if (!r.ok) return Promise.reject(new Error("send http " + r.status));
       return r.json();
     })
     .then(function (json) {
@@ -135,14 +158,13 @@ function sendNotifChatMessage(data, text) {
 
 self.addEventListener("notificationclick", function (event) {
   var notification = event.notification;
-  var data = notification.data || {};
+  var data = parseNotificationData(notification.data);
   var action = event.action || "";
-  var replyPromise =
-    action === "reply" ? normalizeReplyText(event) : Promise.resolve("");
-
-  notification.close();
 
   if (action === "read") {
+    try {
+      notification.close();
+    } catch (e) {}
     var tid = typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
     if (!tid) return;
     var isAdmin = data.readAsAdmin === "1";
@@ -159,7 +181,7 @@ self.addEventListener("notificationclick", function (event) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(bodyObj),
-          credentials: isAdmin ? "include" : "same-origin",
+          credentials: "include",
         }
       )
         .then(function () {
@@ -172,17 +194,32 @@ self.addEventListener("notificationclick", function (event) {
 
   if (action === "reply") {
     event.waitUntil(
-      replyPromise.then(function (raw) {
-        var text = String(raw || "").trim();
-        if (text) return sendNotifChatMessage(data, text);
-        return postNavigateToClients(
-          resolveTargetUrl(data.replyUrl || data.url)
-        );
-      })
+      normalizeReplyText(event)
+        .then(function (raw) {
+          var text = String(raw || "").trim().slice(0, 4000);
+          try {
+            notification.close();
+          } catch (e2) {}
+          if (text) return sendNotifChatMessage(data, text);
+          return postNavigateToClients(
+            resolveTargetUrl(data.replyUrl || data.url)
+          );
+        })
+        .catch(function () {
+          try {
+            notification.close();
+          } catch (e3) {}
+          return postNavigateToClients(
+            resolveTargetUrl(data.replyUrl || data.url)
+          );
+        })
     );
     return;
   }
 
+  try {
+    notification.close();
+  } catch (e) {}
   var raw = typeof data.url === "string" ? data.url : "/";
   event.waitUntil(postNavigateToClients(resolveTargetUrl(raw)));
 });

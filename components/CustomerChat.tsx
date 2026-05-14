@@ -31,6 +31,7 @@ import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import {
   ensureChatNotifyServiceWorker,
   formatChatMessageNotificationBody,
+  shouldMarkThreadReadAfterLoadForVisitor,
   shouldNotifyVisitorChat,
   showChatBrowserNotification,
 } from "@/lib/chatPushNotification";
@@ -343,18 +344,26 @@ export function CustomerChatProvider({
         const j = await r.json();
         if (j.success && Array.isArray(j.messages)) {
           setMessages(j.messages);
-          await chatFetch(`/api/chat/threads/${threadId}/read`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clientId }),
-          });
+          if (
+            shouldMarkThreadReadAfterLoadForVisitor({
+              loadedThreadId: threadId,
+              panelOpen,
+              activeThreadId,
+            })
+          ) {
+            await chatFetch(`/api/chat/threads/${threadId}/read`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ clientId }),
+            });
+          }
           void refreshUnread();
         }
       } finally {
         setLoadingMessages(false);
       }
     },
-    [clientId, refreshUnread]
+    [clientId, refreshUnread, panelOpen, activeThreadId]
   );
 
   useEffect(() => {
@@ -389,6 +398,16 @@ export function CustomerChatProvider({
       void loadMessages(activeThreadId);
     }, 2500);
     return () => window.clearInterval(iv);
+  }, [panelOpen, activeThreadId, clientId, loadMessages]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) return;
+      if (!panelOpen || !activeThreadId || !clientId) return;
+      void loadMessages(activeThreadId);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [panelOpen, activeThreadId, clientId, loadMessages]);
 
   useEffect(() => {

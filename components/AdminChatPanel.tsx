@@ -22,6 +22,7 @@ import {
   shouldNotifyAdminChat,
   showChatBrowserNotification,
   ensureChatNotifyServiceWorker,
+  shouldMarkThreadReadAfterLoadForAdmin,
 } from "@/lib/chatPushNotification";
 import ChatNotifToggle from "@/components/ChatNotifToggle";
 
@@ -225,11 +226,19 @@ export default function AdminChatPanel({
           const list = j.messages as MessageRow[];
           setMessages(list);
           if (threadId === selectedIdRef.current) {
-            await chatFetch(`/api/chat/threads/${threadId}/read`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ asAdmin: true }),
-            });
+            if (
+              shouldMarkThreadReadAfterLoadForAdmin({
+                loadedThreadId: threadId,
+                adminChatPanelActive: activeRef.current,
+                selectedThreadId: selectedIdRef.current,
+              })
+            ) {
+              await chatFetch(`/api/chat/threads/${threadId}/read`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ asAdmin: true }),
+              });
+            }
             void loadConversations();
           }
           void refreshAdminUnread();
@@ -289,6 +298,16 @@ export default function AdminChatPanel({
     void loadMessages(selectedId);
     const t = window.setInterval(() => void loadMessages(selectedId), 2500);
     return () => window.clearInterval(t);
+  }, [active, selectedId, loadMessages]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) return;
+      if (!active || !selectedId) return;
+      void loadMessages(selectedId);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [active, selectedId, loadMessages]);
 
   useEffect(() => {
