@@ -17,6 +17,8 @@ const config: Config = {
         lavender: '#E6E6FA',
         beige: '#F5F5DC',
         rose: '#FFB6C1',
+        /** Slightly deeper pink for hovers (not red). */
+        'rose-dark': '#e8a0b0',
         cream: '#FDFBF9',
         'text-dark': '#4A4A4A',
         'text-light': '#8B8B8B',

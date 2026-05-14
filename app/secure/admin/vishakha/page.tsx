@@ -133,18 +133,16 @@ function AdminCategoryManager({
     }
     setBusySlug(editingSlug);
     try {
-      const r = await fetch(
-        `/api/admin/product-categories/${encodeURIComponent(editingSlug)}`,
-        {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            label,
-            emoji: editEmoji.trim() ? editEmoji.trim().slice(0, 8) : "📦",
-          }),
-        }
-      );
+      const r = await fetch("/api/admin/product-categories", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: editingSlug,
+          label,
+          emoji: editEmoji.trim() ? editEmoji.trim().slice(0, 8) : "📦",
+        }),
+      });
       const j = await r.json();
       if (!j.success) {
         alert(j.error || "Update failed");
@@ -172,7 +170,7 @@ function AdminCategoryManager({
     setBusySlug(slug);
     try {
       const r = await fetch(
-        `/api/admin/product-categories/${encodeURIComponent(slug)}`,
+        `/api/admin/product-categories?slug=${encodeURIComponent(slug)}`,
         { method: "DELETE", credentials: "include" }
       );
       const j = await r.json();
@@ -547,12 +545,17 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="mb-6 border-b border-gray-200">
-          <div className="flex space-x-4 sm:space-x-8">
+        {/* Tabs — horizontal scroll on narrow screens; buttons do not shrink */}
+        <div className="mb-6 border-b border-gray-200 -mx-4 sm:mx-0">
+          <div
+            className="flex min-w-0 gap-6 overflow-x-auto overflow-y-hidden px-4 pb-px [-webkit-overflow-scrolling:touch] sm:gap-8 sm:px-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent"
+            role="tablist"
+            aria-label="Admin sections"
+          >
             <button
+              type="button"
               onClick={() => setActiveTab("orders")}
-              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
                 activeTab === "orders"
                   ? "border-b-2 border-rose text-rose"
                   : "text-text-light hover:text-text-dark"
@@ -561,8 +564,9 @@ export default function AdminPage() {
               Orders ({orders.length})
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("products")}
-              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
                 activeTab === "products"
                   ? "border-b-2 border-rose text-rose"
                   : "text-text-light hover:text-text-dark"
@@ -571,8 +575,9 @@ export default function AdminPage() {
               Products ({products.length})
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("chats")}
-              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
                 activeTab === "chats"
                   ? "border-b-2 border-rose text-rose"
                   : "text-text-light hover:text-text-dark"
@@ -586,8 +591,9 @@ export default function AdminPage() {
               ) : null}
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("contact")}
-              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
                 activeTab === "contact"
                   ? "border-b-2 border-rose text-rose"
                   : "text-text-light hover:text-text-dark"
@@ -596,8 +602,9 @@ export default function AdminPage() {
               Contact forms
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("subscribers")}
-              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+              className={`shrink-0 whitespace-nowrap pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
                 activeTab === "subscribers"
                   ? "border-b-2 border-rose text-rose"
                   : "text-text-light hover:text-text-dark"
