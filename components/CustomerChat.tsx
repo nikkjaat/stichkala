@@ -397,7 +397,7 @@ export function CustomerChatProvider({
     ) {
       const meta = unreadPollMetaRef.current;
       showChatBrowserNotification({
-        title: meta?.title ?? "StichKalaa",
+        title: meta?.title ?? "StichKala",
         body: meta?.body ?? "New message from the shop.",
         tag: `sk-visitor-unread-${unreadTotal}`,
         openVisitorThreadId: meta?.threadId,
@@ -405,7 +405,7 @@ export function CustomerChatProvider({
       });
     }
     prevUnreadRef.current = unreadTotal;
-  }, [unreadTotal, panelOpen]);
+  }, [unreadTotal, panelOpen, clientId]);
 
   useEffect(() => {
     if (!panelOpen || !activeThreadId || !clientId) return;

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import ProductCategory from "@/models/ProductCategory";
 
+export const dynamic = "force-dynamic";
+
 /** Public list: categories saved in DB by admin (shop filters + admin product form). */
 export async function GET() {
   try {

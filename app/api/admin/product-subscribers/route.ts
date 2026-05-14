@@ -7,6 +7,8 @@ import {
   verifySessionCookieValue,
 } from "@/lib/adminSession";
 
+export const dynamic = "force-dynamic";
+
 async function requireAdmin(): Promise<boolean> {
   const token = cookies().get(ADMIN_SESSION_COOKIE)?.value;
   return verifySessionCookieValue(token);
