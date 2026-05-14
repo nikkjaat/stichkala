@@ -22,7 +22,7 @@ import {
   shouldNotifyAdminChat,
   showChatBrowserNotification,
   ensureChatNotifyServiceWorker,
-  shouldMarkThreadReadAfterLoadForAdmin,
+  shouldMarkChatReadInClient,
 } from "@/lib/chatPushNotification";
 import ChatNotifToggle from "@/components/ChatNotifToggle";
 
@@ -226,13 +226,7 @@ export default function AdminChatPanel({
           const list = j.messages as MessageRow[];
           setMessages(list);
           if (threadId === selectedIdRef.current) {
-            if (
-              shouldMarkThreadReadAfterLoadForAdmin({
-                loadedThreadId: threadId,
-                adminChatPanelActive: activeRef.current,
-                selectedThreadId: selectedIdRef.current,
-              })
-            ) {
+            if (shouldMarkChatReadInClient()) {
               await chatFetch(`/api/chat/threads/${threadId}/read`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

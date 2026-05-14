@@ -62,34 +62,6 @@ export function shouldMarkChatReadInClient(): boolean {
   return true;
 }
 
-/**
- * After a successful message fetch, clear server unread when either the user is
- * looking at the screen, or they still have this thread open in the chat UI
- * (panel open / admin thread selected) even if the browser or app is minimized.
- * Avoids “stuck unread + push” while a conversation session is clearly active.
- */
-export function shouldMarkThreadReadAfterLoadForVisitor(params: {
-  loadedThreadId: string;
-  panelOpen: boolean;
-  activeThreadId: string | null | undefined;
-}): boolean {
-  if (shouldMarkChatReadInClient()) return true;
-  if (!params.panelOpen) return false;
-  const active = String(params.activeThreadId ?? "").trim();
-  return active !== "" && active === params.loadedThreadId;
-}
-
-export function shouldMarkThreadReadAfterLoadForAdmin(params: {
-  loadedThreadId: string;
-  adminChatPanelActive: boolean;
-  selectedThreadId: string | null | undefined;
-}): boolean {
-  if (shouldMarkChatReadInClient()) return true;
-  if (!params.adminChatPanelActive) return false;
-  const sel = String(params.selectedThreadId ?? "").trim();
-  return sel !== "" && sel === params.loadedThreadId;
-}
-
 /** User/admin can turn chat desktop notifications off without revoking browser permission. */
 const CHAT_NOTIF_ENABLED_KEY = "sk_chat_notif_enabled";
 
@@ -324,6 +296,10 @@ async function showBrowserChatNotificationAsync(
     data.readAsAdmin = readAsAdmin ? "1" : "0";
   }
 
+  /** Stringify for SW: Chromium reliably round-trips string `data` for inline Reply + Read. */
+  const swDataPayload =
+    withActions && readThreadId ? JSON.stringify(data) : data;
+
   const reg = await getChatNotifyServiceWorkerRegistration();
   if (reg) {
     const common: globalThis.NotificationOptions = {
@@ -335,7 +311,7 @@ async function showBrowserChatNotificationAsync(
       requireInteraction: false,
       renotify: true,
       vibrate: [180, 80, 180],
-      data,
+      data: swDataPayload,
     };
     try {
       if (withActions && readThreadId) {

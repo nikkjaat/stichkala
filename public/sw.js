@@ -28,12 +28,24 @@ function parseNotificationData(raw) {
   if (typeof raw === "string") {
     try {
       var o = JSON.parse(raw);
-      return typeof o === "object" && o ? o : {};
+      return typeof o === "object" && o && !Array.isArray(o) ? o : {};
     } catch (e) {
       return {};
     }
   }
-  if (typeof raw === "object") return raw;
+  if (typeof raw === "object" && raw && !Array.isArray(raw)) {
+    if (typeof raw.sk === "string") {
+      try {
+        var inner = JSON.parse(raw.sk);
+        if (typeof inner === "object" && inner && !Array.isArray(inner)) {
+          return Object.assign({}, raw, inner);
+        }
+      } catch (e2) {
+        /* ignore */
+      }
+    }
+    return raw;
+  }
   return {};
 }
 
@@ -77,20 +89,35 @@ function postNavigateToClients(target) {
     });
 }
 
-/** Chromium / variants: inline reply from notification text action (read before closing notification). */
+/**
+ * Chromium: `event.reply` may be a string or a Promise<string>. It must be
+ * chained from notificationclick so waitUntil keeps the SW alive.
+ */
 function normalizeReplyText(event) {
+  try {
+    if (event && Object.prototype.hasOwnProperty.call(event, "reply")) {
+      var r0 = event.reply;
+      if (typeof r0 === "string") return Promise.resolve(r0);
+      if (r0 != null && typeof r0.then === "function") {
+        return r0.then(function (x) {
+          return String(x == null ? "" : x);
+        });
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
   var candidates = [
-    event.reply,
-    event.userReply,
-    event.notification && event.notification.reply,
-    event.notification && event.notification.userReply,
+    event && event.userReply,
+    event && event.notification && event.notification.reply,
+    event && event.notification && event.notification.userReply,
   ];
   for (var i = 0; i < candidates.length; i++) {
     var r = candidates[i];
     if (typeof r === "string") return Promise.resolve(r);
     if (r && typeof r.then === "function") {
       return r.then(function (x) {
-        return String(x || "");
+        return String(x == null ? "" : x);
       });
     }
   }
@@ -137,10 +164,14 @@ function sendNotifChatMessage(data, text) {
     headers: { "Content-Type": "application/json" },
     body: body,
     credentials: "include",
+    cache: "no-store",
+    mode: "same-origin",
   })
     .then(function (r) {
       if (!r.ok) return Promise.reject(new Error("send http " + r.status));
-      return r.json();
+      return r.json().catch(function () {
+        return Promise.reject(new Error("send not json"));
+      });
     })
     .then(function (json) {
       if (!json || !json.success) return Promise.reject(new Error("send rejected"));
@@ -159,29 +190,33 @@ function sendNotifChatMessage(data, text) {
 self.addEventListener("notificationclick", function (event) {
   var notification = event.notification;
   var data = parseNotificationData(notification.data);
-  var action = event.action || "";
+  var action = (event.action || "").trim();
 
   if (action === "read") {
     try {
       notification.close();
     } catch (e) {}
-    var tid = typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
-    if (!tid) return;
-    var isAdmin = data.readAsAdmin === "1";
-    var cid = typeof data.readClientId === "string" ? data.readClientId.trim() : "";
-    if (!isAdmin && !cid) return;
-    var bodyObj = isAdmin ? { asAdmin: true } : { clientId: cid };
+    var tidRead =
+      typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
+    if (!tidRead) return;
+    var isAdminRead = data.readAsAdmin === "1";
+    var cidRead =
+      typeof data.readClientId === "string" ? data.readClientId.trim() : "";
+    if (!isAdminRead && !cidRead) return;
+    var bodyObj = isAdminRead ? { asAdmin: true } : { clientId: cidRead };
     event.waitUntil(
       fetch(
         self.location.origin +
           "/api/chat/threads/" +
-          encodeURIComponent(tid) +
+          encodeURIComponent(tidRead) +
           "/read",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(bodyObj),
           credentials: "include",
+          cache: "no-store",
+          mode: "same-origin",
         }
       )
         .then(function () {
@@ -192,34 +227,34 @@ self.addEventListener("notificationclick", function (event) {
     return;
   }
 
-  if (action === "reply") {
-    event.waitUntil(
-      normalizeReplyText(event)
-        .then(function (raw) {
-          var text = String(raw || "").trim().slice(0, 4000);
+  event.waitUntil(
+    normalizeReplyText(event)
+      .then(function (raw) {
+        var text = String(raw || "").trim().slice(0, 4000);
+        var tid =
+          typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
+        if (text && tid) {
           try {
             notification.close();
           } catch (e2) {}
-          if (text) return sendNotifChatMessage(data, text);
-          return postNavigateToClients(
-            resolveTargetUrl(data.replyUrl || data.url)
-          );
-        })
-        .catch(function () {
-          try {
-            notification.close();
-          } catch (e3) {}
-          return postNavigateToClients(
-            resolveTargetUrl(data.replyUrl || data.url)
-          );
-        })
-    );
-    return;
-  }
-
-  try {
-    notification.close();
-  } catch (e) {}
-  var raw = typeof data.url === "string" ? data.url : "/";
-  event.waitUntil(postNavigateToClients(resolveTargetUrl(raw)));
+          return sendNotifChatMessage(data, text);
+        }
+        try {
+          notification.close();
+        } catch (e3) {}
+        var dest =
+          action === "reply"
+            ? resolveTargetUrl(data.replyUrl || data.url)
+            : resolveTargetUrl(data.url);
+        return postNavigateToClients(dest);
+      })
+      .catch(function () {
+        try {
+          notification.close();
+        } catch (e4) {}
+        return postNavigateToClients(
+          resolveTargetUrl(action === "reply" ? data.replyUrl || data.url : data.url)
+        );
+      })
+  );
 });

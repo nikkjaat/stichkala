@@ -31,7 +31,7 @@ import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import {
   ensureChatNotifyServiceWorker,
   formatChatMessageNotificationBody,
-  shouldMarkThreadReadAfterLoadForVisitor,
+  shouldMarkChatReadInClient,
   shouldNotifyVisitorChat,
   showChatBrowserNotification,
 } from "@/lib/chatPushNotification";
@@ -344,13 +344,7 @@ export function CustomerChatProvider({
         const j = await r.json();
         if (j.success && Array.isArray(j.messages)) {
           setMessages(j.messages);
-          if (
-            shouldMarkThreadReadAfterLoadForVisitor({
-              loadedThreadId: threadId,
-              panelOpen,
-              activeThreadId,
-            })
-          ) {
+          if (shouldMarkChatReadInClient()) {
             await chatFetch(`/api/chat/threads/${threadId}/read`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -363,7 +357,7 @@ export function CustomerChatProvider({
         setLoadingMessages(false);
       }
     },
-    [clientId, refreshUnread, panelOpen, activeThreadId]
+    [clientId, refreshUnread]
   );
 
   useEffect(() => {
@@ -525,13 +519,14 @@ export function CustomerChatProvider({
     const onChatSent = (ev: Event) => {
       const t = (ev as CustomEvent<{ threadId?: string }>).detail?.threadId;
       void refreshUnread();
+      void loadThreads();
       if (!t || !clientId) return;
       if (panelOpen && activeThreadId === t) void loadMessages(t);
     };
     window.addEventListener("sk-notification-chat-sent", onChatSent);
     return () =>
       window.removeEventListener("sk-notification-chat-sent", onChatSent);
-  }, [refreshUnread, clientId, panelOpen, activeThreadId, loadMessages]);
+  }, [refreshUnread, loadThreads, clientId, panelOpen, activeThreadId, loadMessages]);
 
   const openGeneralChat = useCallback(async () => {
     if (!clientId) return;
