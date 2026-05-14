@@ -1,10 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Send, Loader2, Check, CheckCheck } from "lucide-react";
+import Image from "next/image";
+import {
+  Send,
+  Loader2,
+  Check,
+  CheckCheck,
+  Paperclip,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { FiArrowLeft } from "react-icons/fi";
 import { extractProductIdFromChatUrl } from "@/lib/chatProductUrl";
 import ChatProductDetailModal from "@/components/ChatProductDetailModal";
+import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import { chatFetch } from "@/lib/chatFetch";
 
 type ProductMini = { _id: string; name: string; basePrice: number };
@@ -27,11 +37,21 @@ type MessageRow = {
   body: string;
   orderNumber?: string;
   payToken?: string;
+  offerProductId?: string;
   offerProductName?: string;
   offerListPriceRupees?: number;
   offerRevisedPriceRupees?: number;
+  offerVoidedAt?: string | null;
+  mimeType?: string;
+  fileName?: string;
+  editedAt?: string | null;
   readAt: string | null;
   createdAt: string | null;
+  productPreview?: {
+    name: string;
+    image?: string;
+    basePrice: number;
+  };
 };
 
 function pushBrowserNotification(title: string, body: string) {
@@ -64,10 +84,40 @@ export default function AdminChatPanel({
   const [revisePrices, setRevisePrices] = useState<Record<string, string>>({});
   const [offerBusyKey, setOfferBusyKey] = useState<string | null>(null);
   const [productModalId, setProductModalId] = useState<string | null>(null);
+  const [conversationsHydrated, setConversationsHydrated] = useState(false);
+  const [attachmentLightbox, setAttachmentLightbox] = useState<{
+    url: string;
+    fileName?: string | null;
+    isImage: boolean;
+  } | null>(null);
+  const [adminMessageMenu, setAdminMessageMenu] = useState<{
+    x: number;
+    y: number;
+    message: MessageRow;
+  } | null>(null);
+  const [editMessage, setEditMessage] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const prevUnreadCountRef = useRef(0);
   const adminMessagesScrollRef = useRef<HTMLDivElement | null>(null);
   const adminBootThreadRef = useRef<string | null>(null);
   const adminPrevLastMessageIdRef = useRef<string | null>(null);
+  const activeRef = useRef(active);
+  const onUnreadRef = useRef(onUnread);
+  const selectedIdRef = useRef(selectedId);
+
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+  useEffect(() => {
+    onUnreadRef.current = onUnread;
+  }, [onUnread]);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -78,6 +128,8 @@ export default function AdminChatPanel({
       }
     } catch {
       /* ignore */
+    } finally {
+      setConversationsHydrated(true);
     }
   }, []);
 
@@ -90,7 +142,7 @@ export default function AdminChatPanel({
         if (
           n > prevUnreadCountRef.current &&
           prevUnreadCountRef.current > 0 &&
-          !active
+          !activeRef.current
         ) {
           pushBrowserNotification(
             "StichKala admin",
@@ -98,12 +150,12 @@ export default function AdminChatPanel({
           );
         }
         prevUnreadCountRef.current = n;
-        onUnread?.(n);
+        onUnreadRef.current?.(n);
       }
     } catch {
       /* ignore */
     }
-  }, [onUnread, active]);
+  }, []);
 
   const loadMessages = useCallback(
     async (threadId: string) => {
@@ -115,7 +167,7 @@ export default function AdminChatPanel({
         if (j.success && Array.isArray(j.messages)) {
           const list = j.messages as MessageRow[];
           setMessages(list);
-          if (threadId === selectedId) {
+          if (threadId === selectedIdRef.current) {
             await chatFetch(`/api/chat/threads/${threadId}/read`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -129,7 +181,7 @@ export default function AdminChatPanel({
         /* ignore */
       }
     },
-    [refreshAdminUnread, selectedId, loadConversations]
+    [refreshAdminUnread, loadConversations]
   );
 
   useEffect(() => {
@@ -147,10 +199,11 @@ export default function AdminChatPanel({
   }, [refreshAdminUnread]);
 
   useEffect(() => {
+    if (!active) return;
     void loadConversations();
     const t = window.setInterval(() => void loadConversations(), 5000);
     return () => window.clearInterval(t);
-  }, [loadConversations]);
+  }, [active, loadConversations]);
 
   /** Mobile / browser back closes the full-screen chat instead of leaving the admin site. */
   useEffect(() => {
@@ -168,6 +221,22 @@ export default function AdminChatPanel({
     const t = window.setInterval(() => void loadMessages(selectedId), 2500);
     return () => window.clearInterval(t);
   }, [active, selectedId, loadMessages]);
+
+  useEffect(() => {
+    setAdminMessageMenu(null);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!adminMessageMenu) return;
+    const close = () => setAdminMessageMenu(null);
+    const id = window.setTimeout(() => {
+      window.addEventListener("click", close);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("click", close);
+    };
+  }, [adminMessageMenu]);
 
   useEffect(() => {
     if (!active || !selectedId) {
@@ -252,9 +321,115 @@ export default function AdminChatPanel({
         setDraft("");
         setMessages((prev) => [...prev, j.message]);
         void loadConversations();
+      } else if (r.status === 401) {
+        alert("Session expired. Log in to the admin panel again.");
       }
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendAdminAttachment = async (payload: {
+    url: string;
+    mimeType: string;
+    fileName: string;
+  }) => {
+    if (!selectedId || sending) return;
+    setSending(true);
+    try {
+      const r = await chatFetch(`/api/chat/admin/threads/${selectedId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attachment: payload }),
+      });
+      const j = await r.json();
+      if (j.success && j.message) {
+        setMessages((prev) => [...prev, j.message]);
+        void loadConversations();
+      } else if (r.status === 401) {
+        alert("Session expired. Log in to the admin panel again.");
+      } else {
+        alert(j.error || "Could not send file");
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const onPickAdminFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !selectedId) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Please choose a file under 2 MB.");
+      return;
+    }
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const up = await fetch("/api/chat/upload", {
+        method: "POST",
+        body: fd,
+        cache: "no-store",
+      });
+      const uj = await up.json();
+      if (!uj.success || !uj.url) {
+        alert(uj.error || "Upload failed");
+        return;
+      }
+      await sendAdminAttachment({
+        url: uj.url,
+        mimeType: String(uj.mimeType ?? ""),
+        fileName: String(uj.fileName ?? file.name),
+      });
+    } catch {
+      alert("Upload failed. Try again.");
+    }
+  };
+
+  const deleteAdminMessage = async (id: string) => {
+    if (!confirm("Delete this message for you and the customer?")) return;
+    try {
+      const r = await chatFetch(`/api/chat/admin/messages/${id}`, {
+        method: "DELETE",
+      });
+      const j = await r.json();
+      if (j.success) {
+        setMessages((prev) => prev.filter((x) => x._id !== id));
+        setAdminMessageMenu(null);
+        void loadConversations();
+      } else if (r.status === 401) {
+        alert("Session expired. Log in again.");
+      } else {
+        alert(j.error || "Could not delete");
+      }
+    } catch {
+      alert("Network error");
+    }
+  };
+
+  const saveEditedAdminMessage = async () => {
+    if (!editMessage?.id || !editMessage.text.trim()) return;
+    try {
+      const r = await chatFetch(`/api/chat/admin/messages/${editMessage.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: editMessage.text.trim() }),
+      });
+      const j = await r.json();
+      if (j.success && j.message) {
+        setMessages((prev) =>
+          prev.map((x) => (x._id === editMessage.id ? (j.message as MessageRow) : x))
+        );
+        setEditMessage(null);
+        setAdminMessageMenu(null);
+      } else if (r.status === 401) {
+        alert("Session expired. Log in again.");
+      } else {
+        alert(j.error || "Could not save");
+      }
+    } catch {
+      alert("Network error");
     }
   };
 
@@ -296,6 +471,7 @@ export default function AdminChatPanel({
       });
       if (j.message) setMessages((prev) => [...prev, j.message]);
       void loadConversations();
+      void loadMessages(selectedId);
     } finally {
       setOfferBusyKey(null);
     }
@@ -348,23 +524,151 @@ export default function AdminChatPanel({
                 className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${
+                  className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm select-none ${
                     m.sender === "admin"
                       ? "bg-rose text-white rounded-br-md"
                       : "bg-white border border-gray-100 text-text-dark rounded-bl-md"
                   }`}
+                  onPointerDown={(e) => {
+                    if (m.sender !== "admin") return;
+                    longPressTimerRef.current = window.setTimeout(() => {
+                      longPressTimerRef.current = null;
+                      setAdminMessageMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        message: m,
+                      });
+                    }, 550);
+                  }}
+                  onPointerUp={() => {
+                    if (longPressTimerRef.current != null) {
+                      window.clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onPointerLeave={() => {
+                    if (longPressTimerRef.current != null) {
+                      window.clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onPointerCancel={() => {
+                    if (longPressTimerRef.current != null) {
+                      window.clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    if (m.sender !== "admin") return;
+                    e.preventDefault();
+                    setAdminMessageMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      message: m,
+                    });
+                  }}
                 >
                   {m.kind === "product_link" ? (
+                    <div className="space-y-2">
+                      {m.productPreview ? (
+                        <button
+                          type="button"
+                          className={`w-full text-left rounded-xl overflow-hidden border transition-colors ${
+                            m.sender === "admin"
+                              ? "border-white/40 bg-white/10 hover:bg-white/15"
+                              : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                          }`}
+                          onClick={() => openProductFromLink(m.body)}
+                        >
+                          <div className="flex gap-2 p-2">
+                            {m.productPreview.image ? (
+                              <Image
+                                src={m.productPreview.image}
+                                alt=""
+                                width={56}
+                                height={56}
+                                className="rounded-md object-cover shrink-0"
+                              />
+                            ) : (
+                              <div
+                                className={`w-14 h-14 rounded-md shrink-0 ${
+                                  m.sender === "admin"
+                                    ? "bg-white/20"
+                                    : "bg-gray-200"
+                                }`}
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <p
+                                className={`font-medium text-sm truncate ${
+                                  m.sender === "admin"
+                                    ? "text-white"
+                                    : "text-text-dark"
+                                }`}
+                              >
+                                {m.productPreview.name}
+                              </p>
+                              <p
+                                className={`text-xs ${
+                                  m.sender === "admin"
+                                    ? "text-white/85"
+                                    : "text-text-light"
+                                }`}
+                              >
+                                ₹{m.productPreview.basePrice}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={
+                          m.sender === "admin"
+                            ? "underline text-left"
+                            : "text-rose underline text-left"
+                        }
+                        onClick={() => openProductFromLink(m.body)}
+                      >
+                        View product
+                      </button>
+                    </div>
+                  ) : m.kind === "image" ? (
+                    <button
+                      type="button"
+                      className="block w-full p-0 bg-transparent"
+                      onClick={() =>
+                        setAttachmentLightbox({
+                          url: m.body,
+                          fileName: m.fileName,
+                          isImage: true,
+                        })
+                      }
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={m.body}
+                        alt=""
+                        className="max-w-[220px] max-h-44 rounded-lg object-cover mx-auto"
+                      />
+                    </button>
+                  ) : m.kind === "file" ? (
                     <button
                       type="button"
                       className={
                         m.sender === "admin"
-                          ? "underline text-left"
-                          : "text-rose underline text-left"
+                          ? "text-sm underline text-left text-white"
+                          : "text-sm underline text-left text-rose"
                       }
-                      onClick={() => openProductFromLink(m.body)}
+                      onClick={() =>
+                        setAttachmentLightbox({
+                          url: m.body,
+                          fileName: m.fileName,
+                          isImage: false,
+                        })
+                      }
                     >
-                      View product
+                      {m.fileName || "File attachment"}
                     </button>
                   ) : m.kind === "track_order" && m.orderNumber ? (
                     <div>
@@ -375,6 +679,19 @@ export default function AdminChatPanel({
                       </p>
                     </div>
                   ) : m.kind === "payment_cta" ? (
+                    m.offerVoidedAt ? (
+                      <div className="space-y-1">
+                        {m.offerProductName && (
+                          <p className="text-xs font-semibold opacity-70 line-through">
+                            {m.offerProductName}
+                          </p>
+                        )}
+                        <p className="text-[11px] opacity-85">
+                          Superseded — customer should use the latest pay offer
+                          for this product.
+                        </p>
+                      </div>
+                    ) : (
                     <div>
                       {m.offerProductName && (
                         <p className="text-xs font-semibold opacity-95">
@@ -398,8 +715,16 @@ export default function AdminChatPanel({
                         Customer taps Pay now in their chat.
                       </p>
                     </div>
-                  ) : (
-                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    )
+                    ) : (
+                    <p className="whitespace-pre-wrap break-words">
+                      {m.body}
+                      {m.editedAt && m.sender === "admin" ? (
+                        <span className="block text-[10px] opacity-70 mt-1">
+                          Edited
+                        </span>
+                      ) : null}
+                    </p>
                   )}
                   {m.sender === "admin" && (
                     <div className="flex justify-end mt-1 text-[10px] opacity-80">
@@ -459,7 +784,23 @@ export default function AdminChatPanel({
         })}
       </div>
 
-      <div className="p-2 border-t border-gray-100 flex gap-2 shrink-0 bg-white">
+      <div className="p-2 border-t border-gray-100 flex gap-2 shrink-0 bg-white items-center">
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,.pdf,.doc,.docx,.txt,.zip,.csv,application/*"
+          onChange={(e) => void onPickAdminFile(e)}
+        />
+        <button
+          type="button"
+          disabled={sending || !selectedId}
+          className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-text-dark hover:bg-gray-50 disabled:opacity-40 shrink-0"
+          aria-label="Attach image or file (max 2 MB)"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className="w-5 h-5" />
+        </button>
         <input
           className="flex-1 min-w-0 border rounded-full px-3 py-2 text-sm"
           placeholder="Reply…"
@@ -491,6 +832,94 @@ export default function AdminChatPanel({
 
   return (
     <div className="relative min-h-[50vh]">
+      <ChatAttachmentLightbox
+        open={Boolean(attachmentLightbox)}
+        url={attachmentLightbox?.url ?? ""}
+        fileName={attachmentLightbox?.fileName}
+        isImage={attachmentLightbox?.isImage ?? false}
+        onClose={() => setAttachmentLightbox(null)}
+      />
+
+      {adminMessageMenu ? (
+        <div
+          className="fixed z-[250] rounded-xl border border-gray-200 bg-white shadow-xl py-1 min-w-[140px]"
+          style={{
+            left: Math.min(
+              adminMessageMenu.x,
+              typeof window !== "undefined" ? window.innerWidth - 160 : 0
+            ),
+            top: Math.min(
+              adminMessageMenu.y,
+              typeof window !== "undefined" ? window.innerHeight - 120 : 0
+            ),
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {adminMessageMenu.message.kind === "text" ? (
+            <button
+              type="button"
+              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+              onClick={() => {
+                setEditMessage({
+                  id: adminMessageMenu.message._id,
+                  text: adminMessageMenu.message.body,
+                });
+                setAdminMessageMenu(null);
+              }}
+            >
+              <Pencil className="w-4 h-4" />
+              Edit
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+            onClick={() => void deleteAdminMessage(adminMessageMenu.message._id)}
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+        </div>
+      ) : null}
+
+      {editMessage ? (
+        <div
+          className="fixed inset-0 z-[260] flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal
+          aria-label="Edit message"
+        >
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-4 space-y-3">
+            <p className="font-medium text-text-dark text-sm">Edit message</p>
+            <textarea
+              className="w-full border rounded-lg px-3 py-2 text-sm min-h-[100px]"
+              value={editMessage.text}
+              onChange={(e) =>
+                setEditMessage((prev) =>
+                  prev ? { ...prev, text: e.target.value } : prev
+                )
+              }
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm text-text-light"
+                onClick={() => setEditMessage(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 text-sm rounded-lg bg-rose text-white"
+                onClick={() => void saveEditedAdminMessage()}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <ChatProductDetailModal
         open={Boolean(productModalId)}
         productId={productModalId}
@@ -506,6 +935,15 @@ export default function AdminChatPanel({
               Visitors ({conversations.length})
             </div>
             <div className="flex-1 overflow-y-auto divide-y min-h-0">
+              {!conversationsHydrated && conversations.length === 0 ? (
+                <div
+                  className="p-10 flex justify-center text-text-light"
+                  aria-busy
+                  aria-label="Loading conversations"
+                >
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                </div>
+              ) : null}
               {conversations.map((c) => {
                 const unread = c.unreadUserMessages ?? 0;
                 const hasUnread = unread > 0;
@@ -560,9 +998,9 @@ export default function AdminChatPanel({
                 </button>
                 );
               })}
-              {conversations.length === 0 && (
+              {conversationsHydrated && conversations.length === 0 ? (
                 <p className="p-4 text-sm text-text-light">No chats yet.</p>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

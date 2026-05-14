@@ -22,6 +22,40 @@ export const uploadToCloudinary = async (
   }
 };
 
+const CHAT_ATTACHMENT_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Upload a chat attachment (image or other file) to Cloudinary; max 2 MB. */
+export async function uploadChatAttachmentToCloudinary(
+  file: File
+): Promise<{ url: string; mimeType: string; fileName: string; isImage: boolean }> {
+  if (file.size > CHAT_ATTACHMENT_MAX_BYTES) {
+    throw new Error("File must be 2 MB or smaller");
+  }
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+  const mimeType =
+    (file.type && file.type.trim()) || "application/octet-stream";
+  const fileName = (file.name && file.name.trim()) || "attachment";
+  const base64 = buffer.toString("base64");
+  const dataUri = `data:${mimeType};base64,${base64}`;
+  const isImage = mimeType.startsWith("image/");
+  try {
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: "handcrafted-gifts/chat",
+      resource_type: isImage ? "image" : "raw",
+    });
+    return {
+      url: result.secure_url as string,
+      mimeType,
+      fileName,
+      isImage,
+    };
+  } catch (error) {
+    console.error("Error uploading chat file to Cloudinary:", error);
+    throw new Error("Failed to upload file");
+  }
+}
+
 export const uploadFromUrl = async (
   url: string,
   folder: string = "products"

@@ -5,6 +5,8 @@ import ChatMessage from "@/models/ChatMessage";
 import mongoose from "mongoose";
 import { syncVisitorPublicIdForClient } from "@/lib/chatVisitorSync";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
+import { serializeMessagesWithProductPreviews } from "@/lib/enrichChatMessages";
+import { isCloudinaryChatAttachmentUrl } from "@/lib/chatAttachmentUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +40,13 @@ export async function GET(
       .limit(200)
       .lean();
 
+    const payload = await serializeMessagesWithProductPreviews(
+      messages as unknown as Record<string, unknown>[]
+    );
+
     return NextResponse.json({
       success: true,
-      messages: messages.map((m) =>
-        serializeChatMessage(m as Parameters<typeof serializeChatMessage>[0])
-      ),
+      messages: payload,
     });
   } catch (e) {
     console.error(e);
@@ -53,7 +57,7 @@ export async function GET(
   }
 }
 
-/** POST — user sends text */
+/** POST — user sends text or a chat attachment (URL from POST /api/chat/upload) */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -63,14 +67,31 @@ export async function POST(
     const body = await request.json();
     const clientId = String(body.clientId ?? "").trim();
     const text = String(body.text ?? "").trim();
+    const attachment = body.attachment as
+      | { url?: string; mimeType?: string; fileName?: string }
+      | undefined;
 
-    if (!clientId || !text) {
+    const hasText = Boolean(text);
+    const hasAttachment =
+      attachment &&
+      typeof attachment === "object" &&
+      typeof attachment.url === "string" &&
+      attachment.url.trim().length > 0;
+
+    if (!clientId || (!hasText && !hasAttachment)) {
       return NextResponse.json(
-        { success: false, error: "clientId and text required" },
+        { success: false, error: "clientId and text or attachment required" },
         { status: 400 }
       );
     }
-    if (text.length > 4000) {
+    if (hasText && hasAttachment) {
+      return NextResponse.json(
+        { success: false, error: "Send either text or an attachment, not both" },
+        { status: 400 }
+      );
+    }
+
+    if (hasText && text.length > 4000) {
       return NextResponse.json(
         { success: false, error: "Message too long" },
         { status: 400 }
@@ -86,12 +107,34 @@ export async function POST(
       );
     }
 
-    const msg = await ChatMessage.create({
-      threadId: thread._id,
-      sender: "user",
-      kind: "text",
-      body: text,
-    });
+    let msg;
+    if (hasAttachment) {
+      const url = String(attachment!.url).trim();
+      if (!isCloudinaryChatAttachmentUrl(url)) {
+        return NextResponse.json(
+          { success: false, error: "Invalid attachment URL" },
+          { status: 400 }
+        );
+      }
+      const mimeType = String(attachment!.mimeType ?? "").slice(0, 200);
+      const fileName = String(attachment!.fileName ?? "file").slice(0, 240);
+      const isImage = mimeType.startsWith("image/");
+      msg = await ChatMessage.create({
+        threadId: thread._id,
+        sender: "user",
+        kind: isImage ? "image" : "file",
+        body: url,
+        mimeType: mimeType || undefined,
+        fileName: fileName || undefined,
+      });
+    } else {
+      msg = await ChatMessage.create({
+        threadId: thread._id,
+        sender: "user",
+        kind: "text",
+        body: text,
+      });
+    }
     thread.lastMessageAt = new Date();
     await thread.save();
     await syncVisitorPublicIdForClient(clientId);

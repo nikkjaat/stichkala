@@ -2,6 +2,27 @@
 
 export const ADMIN_SESSION_COOKIE = "sk_admin_session";
 
+/** Use in route handlers that also read `request.formData()` / body — `cookies()` from `next/headers` can lock the body in some Next versions. */
+export function parseAdminSessionFromCookieHeader(
+  cookieHeader: string | null
+): string | undefined {
+  if (!cookieHeader) return undefined;
+  const prefix = `${ADMIN_SESSION_COOKIE}=`;
+  const parts = cookieHeader.split(";").map((s) => s.trim());
+  for (const p of parts) {
+    if (p.startsWith(prefix)) {
+      const raw = p.slice(prefix.length).trim();
+      if (!raw) return undefined;
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    }
+  }
+  return undefined;
+}
+
 function secretMaterial(): string {
   return (
     process.env.ADMIN_SESSION_SECRET?.trim() ||

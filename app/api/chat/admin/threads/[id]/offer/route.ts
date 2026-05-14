@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import connectDB from "@/lib/mongodb";
 import ChatThread from "@/models/ChatThread";
 import ChatMessage from "@/models/ChatMessage";
@@ -7,8 +8,17 @@ import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
+import {
+  ADMIN_SESSION_COOKIE,
+  verifySessionCookieValue,
+} from "@/lib/adminSession";
 
 export const dynamic = "force-dynamic";
+
+async function requireAdmin(): Promise<boolean> {
+  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value;
+  return verifySessionCookieValue(token);
+}
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -25,6 +35,13 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (!(await requireAdmin())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const threadId = params.id;
     const body = await request.json();
     const amountRupees = Number(body.amountRupees);
@@ -121,6 +138,16 @@ export async function POST(
       offerRevisedPriceRupees: revisedRounded,
       offerProductId: new mongoose.Types.ObjectId(productId),
     });
+
+    await ChatMessage.updateMany(
+      {
+        threadId: thread._id,
+        kind: "payment_cta",
+        offerProductId: new mongoose.Types.ObjectId(productId),
+        payToken: { $ne: token },
+      },
+      { $set: { offerVoidedAt: new Date() } }
+    );
 
     return NextResponse.json({
       success: true,

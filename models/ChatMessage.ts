@@ -5,13 +5,15 @@ export type ChatMessageKind =
   | "text"
   | "product_link"
   | "payment_cta"
-  | "track_order";
+  | "track_order"
+  | "image"
+  | "file";
 
 export interface IChatMessage {
   threadId: mongoose.Types.ObjectId;
   sender: ChatMessageSender;
   kind: ChatMessageKind;
-  /** Plain text, product URL, or short label for payment bubble */
+  /** Plain text, product URL, attachment URL (image/file), or short label for payment bubble */
   body: string;
   /** For payment_cta — user opens /chat-pay/[payToken]; never show Razorpay ids in body */
   payToken?: string;
@@ -22,13 +24,20 @@ export interface IChatMessage {
   offerListPriceRupees?: number;
   offerRevisedPriceRupees?: number;
   offerProductId?: mongoose.Types.ObjectId;
+  /** Set when a newer pay offer for the same product replaced this bubble. */
+  offerVoidedAt?: Date;
+  /** image/file — original filename for downloads */
+  fileName?: string;
+  mimeType?: string;
+  /** Last edit time (admin text edits). */
+  editedAt?: Date;
   /** Set when the other party has read this message (double tick). */
   readAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-const ChatMessageSchema = new mongoose.Schema<IChatMessage>(
+const ChatMessageSchema = new mongoose.Schema(
   {
     threadId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -39,10 +48,21 @@ const ChatMessageSchema = new mongoose.Schema<IChatMessage>(
     sender: { type: String, enum: ["user", "admin"], required: true },
     kind: {
       type: String,
-      enum: ["text", "product_link", "payment_cta", "track_order"],
+      enum: [
+        "text",
+        "product_link",
+        "payment_cta",
+        "track_order",
+        "image",
+        "file",
+      ],
       default: "text",
     },
     body: { type: String, required: true },
+    offerVoidedAt: Date,
+    fileName: String,
+    mimeType: String,
+    editedAt: Date,
     payToken: String,
     orderNumber: String,
     offerProductName: String,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import React, {
   createContext,
   useCallback,
@@ -17,12 +18,14 @@ import {
   Loader2,
   Check,
   CheckCheck,
+  Paperclip,
 } from "lucide-react";
 import { getChatClientId } from "@/lib/chatClientId";
 import { extractProductIdFromChatUrl } from "@/lib/chatProductUrl";
 import ChatProductDetailModal from "@/components/ChatProductDetailModal";
 import CustomizationModal from "@/components/CustomizationModal";
 import { chatFetch } from "@/lib/chatFetch";
+import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 
 export type ChatProductRef = { _id: string; name: string };
 
@@ -66,7 +69,13 @@ function mapApiProduct(raw: Record<string, unknown>): CheckoutProduct {
 export type ChatMessageRow = {
   _id: string;
   sender: "user" | "admin";
-  kind: "text" | "product_link" | "payment_cta" | "track_order";
+  kind:
+    | "text"
+    | "product_link"
+    | "payment_cta"
+    | "track_order"
+    | "image"
+    | "file";
   body: string;
   orderNumber?: string;
   payToken?: string;
@@ -74,8 +83,17 @@ export type ChatMessageRow = {
   offerProductName?: string;
   offerListPriceRupees?: number;
   offerRevisedPriceRupees?: number;
+  offerVoidedAt?: string | null;
+  mimeType?: string;
+  fileName?: string;
+  editedAt?: string | null;
   readAt: string | null;
   createdAt: string | null;
+  productPreview?: {
+    name: string;
+    image?: string;
+    basePrice: number;
+  };
 };
 
 type ThreadRow = {
@@ -154,6 +172,12 @@ export function CustomerChatProvider({
     revisedUnitPriceRupees: number;
     listPriceRupees?: number;
   } | null>(null);
+  const [attachmentLightbox, setAttachmentLightbox] = useState<{
+    url: string;
+    fileName?: string | null;
+    isImage: boolean;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastSeenLatestRef = useRef<string | null>(null);
   const prevUnreadRef = useRef(0);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
@@ -410,8 +434,76 @@ export function CustomerChatProvider({
     }
   }, [draft, activeThreadId, clientId, sending]);
 
+  const sendAttachmentMessage = useCallback(
+    async (payload: {
+      url: string;
+      mimeType: string;
+      fileName: string;
+    }) => {
+      if (!activeThreadId || !clientId || sending) return;
+      setSending(true);
+      try {
+        const r = await chatFetch(`/api/chat/threads/${activeThreadId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId, attachment: payload }),
+        });
+        const j = await r.json();
+        if (j.success && j.message) {
+          setMessages((prev) => [...prev, j.message]);
+        } else {
+          alert(j.error || "Could not send file");
+        }
+      } finally {
+        setSending(false);
+      }
+    },
+    [activeThreadId, clientId, sending]
+  );
+
+  const onPickChatFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file || !clientId) return;
+      if (file.size > 2 * 1024 * 1024) {
+        alert("Please choose a file under 2 MB.");
+        return;
+      }
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("clientId", clientId);
+        const up = await fetch("/api/chat/upload", {
+          method: "POST",
+          body: fd,
+          cache: "no-store",
+        });
+        const uj = await up.json();
+        if (!uj.success || !uj.url) {
+          alert(uj.error || "Upload failed");
+          return;
+        }
+        await sendAttachmentMessage({
+          url: uj.url,
+          mimeType: String(uj.mimeType ?? ""),
+          fileName: String(uj.fileName ?? file.name),
+        });
+      } catch {
+        alert("Upload failed. Try again.");
+      }
+    },
+    [clientId, sendAttachmentMessage]
+  );
+
   const startNegotiatedCheckout = useCallback(
     async (m: ChatMessageRow) => {
+      if (m.offerVoidedAt) {
+        alert(
+          "This price link was replaced by a newer offer. Scroll to the latest offer in the chat."
+        );
+        return;
+      }
       if (!clientId || !activeThreadId) return;
       const pid = m.offerProductId;
       const rev = m.offerRevisedPriceRupees;
@@ -497,8 +589,8 @@ export function CustomerChatProvider({
 
   const openPaymentProductView = (m: ChatMessageRow) => {
     if (!m.offerProductId) return;
-    setNegotiatedPaySource(m);
-    setProductModalHidePay(false);
+    setNegotiatedPaySource(m.offerVoidedAt ? null : m);
+    setProductModalHidePay(Boolean(m.offerVoidedAt));
     setProductModalId(m.offerProductId);
   };
 
@@ -583,6 +675,14 @@ export function CustomerChatProvider({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ChatAttachmentLightbox
+        open={Boolean(attachmentLightbox)}
+        url={attachmentLightbox?.url ?? ""}
+        fileName={attachmentLightbox?.fileName}
+        isImage={attachmentLightbox?.isImage ?? false}
+        onClose={() => setAttachmentLightbox(null)}
+      />
 
       {clientId && (
         <>
@@ -711,7 +811,60 @@ export function CustomerChatProvider({
                             }`}
                           >
                             {m.kind === "product_link" ? (
-                              <div className="space-y-1.5">
+                              <div className="space-y-2">
+                                {m.productPreview ? (
+                                  <button
+                                    type="button"
+                                    className={`w-full text-left rounded-xl overflow-hidden border transition-colors ${
+                                      m.sender === "user"
+                                        ? "border-white/40 bg-white/10 hover:bg-white/15"
+                                        : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                                    }`}
+                                    onClick={() =>
+                                      openProductFromChatUrl(m.body, true)
+                                    }
+                                  >
+                                    <div className="flex gap-2 p-2">
+                                      {m.productPreview.image ? (
+                                        <Image
+                                          src={m.productPreview.image}
+                                          alt=""
+                                          width={56}
+                                          height={56}
+                                          className="rounded-md object-cover shrink-0"
+                                        />
+                                      ) : (
+                                        <div
+                                          className={`w-14 h-14 rounded-md shrink-0 ${
+                                            m.sender === "user"
+                                              ? "bg-white/20"
+                                              : "bg-gray-200"
+                                          }`}
+                                        />
+                                      )}
+                                      <div className="min-w-0">
+                                        <p
+                                          className={`font-medium text-sm truncate ${
+                                            m.sender === "user"
+                                              ? "text-white"
+                                              : "text-text-dark"
+                                          }`}
+                                        >
+                                          {m.productPreview.name}
+                                        </p>
+                                        <p
+                                          className={`text-xs ${
+                                            m.sender === "user"
+                                              ? "text-white/85"
+                                              : "text-text-light"
+                                          }`}
+                                        >
+                                          ₹{m.productPreview.basePrice}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   className={
@@ -738,6 +891,43 @@ export function CustomerChatProvider({
                                   Open on site
                                 </a>
                               </div>
+                            ) : m.kind === "image" ? (
+                              <button
+                                type="button"
+                                className="block w-full p-0 bg-transparent"
+                                onClick={() =>
+                                  setAttachmentLightbox({
+                                    url: m.body,
+                                    fileName: m.fileName,
+                                    isImage: true,
+                                  })
+                                }
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={m.body}
+                                  alt=""
+                                  className="max-w-[220px] max-h-44 rounded-lg object-cover mx-auto"
+                                />
+                              </button>
+                            ) : m.kind === "file" ? (
+                              <button
+                                type="button"
+                                className={
+                                  m.sender === "user"
+                                    ? "text-sm underline text-white text-left"
+                                    : "text-sm underline text-rose text-left"
+                                }
+                                onClick={() =>
+                                  setAttachmentLightbox({
+                                    url: m.body,
+                                    fileName: m.fileName,
+                                    isImage: false,
+                                  })
+                                }
+                              >
+                                {m.fileName || "File attachment"}
+                              </button>
                             ) : m.kind === "track_order" && m.orderNumber ? (
                               <div className="space-y-2">
                                 <p
@@ -767,6 +957,31 @@ export function CustomerChatProvider({
                                 </button>
                               </div>
                             ) : m.kind === "payment_cta" && m.payToken ? (
+                              m.offerVoidedAt ? (
+                                <div className="space-y-1">
+                                  {m.offerProductName && (
+                                    <p
+                                      className={
+                                        m.sender === "user"
+                                          ? "text-xs font-semibold text-white/80 line-through"
+                                          : "text-xs font-semibold text-text-light line-through"
+                                      }
+                                    >
+                                      {m.offerProductName}
+                                    </p>
+                                  )}
+                                  <p
+                                    className={
+                                      m.sender === "user"
+                                        ? "text-xs text-white/90"
+                                        : "text-xs text-text-light"
+                                    }
+                                  >
+                                    This price link was replaced by a newer
+                                    offer. Use the latest offer below to pay.
+                                  </p>
+                                </div>
+                              ) : (
                               <div className="space-y-2">
                                 {m.offerProductName && (
                                   <p
@@ -835,9 +1050,15 @@ export function CustomerChatProvider({
                                   </p>
                                 )}
                               </div>
+                            )
                             ) : (
                               <p className="whitespace-pre-wrap break-words">
                                 {m.body}
+                                {m.editedAt && m.sender === "admin" ? (
+                                  <span className="block text-[10px] opacity-70 mt-1">
+                                    Edited
+                                  </span>
+                                ) : null}
                               </p>
                             )}
                             {m.sender === "user" && (
@@ -861,7 +1082,23 @@ export function CustomerChatProvider({
                     )}
                   </div>
 
-                  <div className="px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] border-t border-gray-100 flex items-center gap-3 bg-white shrink-0">
+                  <div className="px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] border-t border-gray-100 flex items-center gap-2 bg-white shrink-0">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept="image/*,.pdf,.doc,.docx,.txt,.zip,.csv,application/*"
+                      onChange={(e) => void onPickChatFile(e)}
+                    />
+                    <button
+                      type="button"
+                      disabled={sending || !activeThreadId}
+                      className="w-11 h-11 rounded-full border border-gray-200 flex items-center justify-center text-text-dark hover:bg-gray-50 disabled:opacity-40 shrink-0 touch-manipulation"
+                      aria-label="Attach image or file (max 2 MB)"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
                     <input
                       className="flex-1 min-w-0 min-h-[44px] rounded-full border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-rose focus:ring-1 focus:ring-rose/30"
                       placeholder="Type a message…"

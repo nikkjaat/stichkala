@@ -15,6 +15,8 @@ function previewLine(doc: {
   let inner: string;
   if (doc.kind === "product_link") inner = "Sent a product link";
   else if (doc.kind === "payment_cta") inner = "Revised price / pay offer";
+  else if (doc.kind === "image") inner = "Photo";
+  else if (doc.kind === "file") inner = "File";
   else if (doc.kind === "track_order") inner = "Order update — Track Order";
   else {
     const t = String(doc.body ?? "")

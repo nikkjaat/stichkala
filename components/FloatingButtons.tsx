@@ -42,7 +42,12 @@ export default function FloatingButtons() {
   }, [refreshAdminSession]);
 
   useEffect(() => {
-    if (!pathname?.startsWith("/secure/admin")) return;
+    const pollAdminUnread =
+      adminAuthenticated && !pathname?.startsWith("/secure/admin");
+    if (!pollAdminUnread) {
+      setAdminChatUnread(0);
+      return;
+    }
     let cancelled = false;
     const loadAdminUnread = async () => {
       try {
@@ -51,11 +56,7 @@ export default function FloatingButtons() {
           success?: boolean;
           unread?: number;
         };
-        if (
-          !cancelled &&
-          j.success &&
-          typeof j.unread === "number"
-        ) {
+        if (!cancelled && j.success && typeof j.unread === "number") {
           setAdminChatUnread(j.unread);
         }
       } catch {
@@ -68,15 +69,19 @@ export default function FloatingButtons() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [pathname]);
+  }, [pathname, adminAuthenticated]);
 
   const handleInstagramClick = () => {
     window.open(INSTAGRAM_PROFILE_URL, "_blank", "noopener,noreferrer");
   };
 
   if (pathname?.startsWith("/secure/admin")) {
-    return (
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">
+    return null;
+  }
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">
+      {adminAuthenticated ? (
         <motion.div
           initial={{ opacity: 0, scale: 0 }}
           animate={{
@@ -88,26 +93,28 @@ export default function FloatingButtons() {
           <Link
             href="/secure/admin/vishakha"
             className="w-12 h-12 flex items-center justify-center rounded-full bg-text-dark text-white shadow-lg hover:bg-text-dark/90 transition-colors touch-manipulation"
-            title="Admin dashboard"
-            aria-label="Open admin dashboard"
+            title="Admin panel"
+            aria-label="Open admin panel"
           >
             <MdOutlineAdminPanelSettings className="text-2xl" />
           </Link>
         </motion.div>
+      ) : null}
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{
-            opacity: isVisible ? 1 : 0,
-            scale: isVisible ? 1 : 0,
-          }}
-          transition={{ duration: 0.25, delay: 0.04 }}
-        >
+      <motion.div
+        initial={{ opacity: 0, scale: 0 }}
+        animate={{
+          opacity: isVisible ? 1 : 0,
+          scale: isVisible ? 1 : 0,
+        }}
+        transition={{ duration: 0.25, delay: adminAuthenticated ? 0.04 : 0 }}
+      >
+        {adminAuthenticated ? (
           <Link
             href="/secure/admin/vishakha?tab=chats"
-            className="relative w-12 h-12 flex items-center justify-center rounded-full bg-rose text-white shadow-lg hover:bg-rose-dark transition-colors touch-manipulation"
-            title="Customer chats"
-            aria-label="Open customer chats"
+            className="relative w-12 h-12 flex items-center justify-center rounded-full bg-rose text-white shadow-lg hover:bg-rose-dark transition-all touch-manipulation"
+            title="Chats — visitor messages"
+            aria-label="Open admin chats to see visitors"
           >
             <FaComments className="text-xl" />
             {adminChatUnread > 0 ? (
@@ -116,60 +123,20 @@ export default function FloatingButtons() {
               </span>
             ) : null}
           </Link>
-        </motion.div>
-
-        <motion.button
-          type="button"
-          onClick={handleInstagramClick}
-          className="w-12 h-12 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center touch-manipulation"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{
-            opacity: isVisible ? 1 : 0,
-            scale: isVisible ? 1 : 0,
-          }}
-          transition={{ duration: 0.25, delay: 0.08 }}
-          aria-label="Open StichKala on Instagram"
-        >
-          <FaInstagram className="text-xl" />
-        </motion.button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">
-      <motion.div
-        initial={{ opacity: 0, scale: 0 }}
-        animate={{
-          opacity: isVisible ? 1 : 0,
-          scale: isVisible ? 1 : 0,
-        }}
-        transition={{ duration: 0.25 }}
-      >
-        {adminAuthenticated ? (
-          <Link
-            href="/secure/admin/vishakha"
-            className="w-12 h-12 flex items-center justify-center rounded-full bg-text-dark text-white shadow-lg hover:bg-text-dark/90 transition-colors touch-manipulation"
-            title="Admin panel"
-            aria-label="Open admin panel"
-          >
-            <MdOutlineAdminPanelSettings className="text-2xl" />
-          </Link>
         ) : (
           <button
             type="button"
             onClick={() => void chat?.openChatPanel()}
             className="relative w-12 h-12 bg-rose text-white rounded-full shadow-lg hover:bg-rose-dark transition-all flex items-center justify-center touch-manipulation"
+            title="Chat with StichKala (shop chat)"
             aria-label="Chat with StichKala about orders or payments"
           >
             <FaComments className="text-xl" />
-            {(chat?.unreadTotal ?? 0) > 0 && (
+            {(chat?.unreadTotal ?? 0) > 0 ? (
               <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-white text-rose text-[10px] font-bold flex items-center justify-center border-2 border-rose shadow-sm">
                 {(chat?.unreadTotal ?? 0) > 9 ? "9+" : chat?.unreadTotal}
               </span>
-            )}
+            ) : null}
           </button>
         )}
       </motion.div>
@@ -185,7 +152,10 @@ export default function FloatingButtons() {
           opacity: isVisible ? 1 : 0,
           scale: isVisible ? 1 : 0,
         }}
-        transition={{ duration: 0.25, delay: 0.05 }}
+        transition={{
+          duration: 0.25,
+          delay: adminAuthenticated ? 0.08 : 0.05,
+        }}
         aria-label="Open StichKala on Instagram"
       >
         <FaInstagram className="text-xl" />
