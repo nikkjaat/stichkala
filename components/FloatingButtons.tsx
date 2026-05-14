@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FaInstagram, FaComments } from "react-icons/fa";
@@ -9,6 +9,10 @@ import { MdOutlineAdminPanelSettings } from "react-icons/md";
 import { INSTAGRAM_PROFILE_URL } from "@/lib/siteContact";
 import { useCustomerChat } from "@/components/CustomerChat";
 import { chatFetch } from "@/lib/chatFetch";
+import {
+  shouldNotifyAdminChat,
+  showBrowserChatNotification,
+} from "@/lib/chatPushNotification";
 
 export default function FloatingButtons() {
   const pathname = usePathname();
@@ -16,6 +20,8 @@ export default function FloatingButtons() {
   const [isVisible, setIsVisible] = useState(false);
   const [adminAuthenticated, setAdminAuthenticated] = useState(false);
   const [adminChatUnread, setAdminChatUnread] = useState(0);
+  const adminFloatUnreadBaselineRef = useRef(false);
+  const prevAdminFloatUnreadRef = useRef(0);
 
   const refreshAdminSession = useCallback(async () => {
     try {
@@ -46,6 +52,8 @@ export default function FloatingButtons() {
       adminAuthenticated && !pathname?.startsWith("/secure/admin");
     if (!pollAdminUnread) {
       setAdminChatUnread(0);
+      adminFloatUnreadBaselineRef.current = false;
+      prevAdminFloatUnreadRef.current = 0;
       return;
     }
     let cancelled = false;
@@ -55,10 +63,36 @@ export default function FloatingButtons() {
         const j = (await r.json()) as {
           success?: boolean;
           unread?: number;
+          notifyTitle?: string;
+          notifyBody?: string;
         };
-        if (!cancelled && j.success && typeof j.unread === "number") {
-          setAdminChatUnread(j.unread);
+        if (cancelled || !j.success || typeof j.unread !== "number") return;
+        const n = j.unread;
+        const title =
+          typeof j.notifyTitle === "string" ? j.notifyTitle : "StichKala admin";
+        const body =
+          typeof j.notifyBody === "string"
+            ? j.notifyBody
+            : "New customer message";
+        if (!adminFloatUnreadBaselineRef.current) {
+          adminFloatUnreadBaselineRef.current = true;
+          prevAdminFloatUnreadRef.current = n;
+          setAdminChatUnread(n);
+          return;
         }
+        if (
+          n > prevAdminFloatUnreadRef.current &&
+          Notification.permission === "granted" &&
+          shouldNotifyAdminChat({ chatsTabActive: false })
+        ) {
+          showBrowserChatNotification({
+            title,
+            body,
+            tag: `sk-admin-float-${n}`,
+          });
+        }
+        prevAdminFloatUnreadRef.current = n;
+        setAdminChatUnread(n);
       } catch {
         if (!cancelled) setAdminChatUnread(0);
       }

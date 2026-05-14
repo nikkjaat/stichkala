@@ -1,3 +1,6 @@
+/** Public inbox for mailto links and support copy. */
+export const CONTACT_EMAIL = "stichkalaa@gmail.com";
+
 /** Public profile (share / follow). */
 export const INSTAGRAM_PROFILE_URL =
   process.env.NEXT_PUBLIC_INSTAGRAM_URL ??

@@ -19,6 +19,7 @@ import {
   Check,
   CheckCheck,
   Paperclip,
+  FileText,
 } from "lucide-react";
 import { getChatClientId } from "@/lib/chatClientId";
 import { extractProductIdFromChatUrl } from "@/lib/chatProductUrl";
@@ -26,6 +27,11 @@ import ChatProductDetailModal from "@/components/ChatProductDetailModal";
 import CustomizationModal from "@/components/CustomizationModal";
 import { chatFetch } from "@/lib/chatFetch";
 import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
+import {
+  formatChatMessageNotificationBody,
+  shouldNotifyVisitorChat,
+  showBrowserChatNotification,
+} from "@/lib/chatPushNotification";
 
 export type ChatProductRef = { _id: string; name: string };
 
@@ -123,19 +129,6 @@ export function useCustomerChat() {
   return useContext(CustomerChatContext);
 }
 
-function notifyBrowser(title: string, body: string) {
-  if (typeof window === "undefined") return;
-  if (document.visibilityState === "visible") return;
-  if (!("Notification" in window) || Notification.permission !== "granted") {
-    return;
-  }
-  try {
-    new Notification(title, { body, tag: "stichkala-chat" });
-  } catch {
-    /* ignore */
-  }
-}
-
 export function CustomerChatProvider({
   children,
 }: {
@@ -177,12 +170,47 @@ export function CustomerChatProvider({
     fileName?: string | null;
     isImage: boolean;
   } | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    file: File;
+    previewUrl: string | null;
+    isImage: boolean;
+  } | null>(null);
+  const [notifPerm, setNotifPerm] = useState<
+    NotificationPermission | "unsupported"
+  >("unsupported");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastSeenLatestRef = useRef<string | null>(null);
   const prevUnreadRef = useRef(0);
+  const visitorUnreadBaselineDoneRef = useRef(false);
+  const unreadPollMetaRef = useRef<{ title: string; body: string } | null>(
+    null
+  );
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const lastThreadForScrollRef = useRef<string | null>(null);
   const customerPrevLastMessageIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    visitorUnreadBaselineDoneRef.current = false;
+    prevUnreadRef.current = 0;
+    unreadPollMetaRef.current = null;
+  }, [clientId]);
+
+  useEffect(() => {
+    if (!panelOpen) return;
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotifPerm("unsupported");
+      return;
+    }
+    setNotifPerm(Notification.permission);
+  }, [panelOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingAttachment?.previewUrl) {
+        URL.revokeObjectURL(pendingAttachment.previewUrl);
+      }
+    };
+  }, [pendingAttachment?.previewUrl]);
 
   const refreshUnread = useCallback(async () => {
     if (!clientId) return;
@@ -190,8 +218,26 @@ export function CustomerChatProvider({
       const r = await chatFetch(
         `/api/chat/unread?clientId=${encodeURIComponent(clientId)}`
       );
-      const j = await r.json();
-      if (j.success) setUnreadTotal(Number(j.unread) || 0);
+      const j = (await r.json()) as {
+        success?: boolean;
+        unread?: number;
+        notifyTitle?: string;
+        notifyBody?: string;
+      };
+      if (!j.success) return;
+      const n = Number(j.unread) || 0;
+      if (typeof j.notifyTitle === "string" && typeof j.notifyBody === "string") {
+        unreadPollMetaRef.current = { title: j.notifyTitle, body: j.notifyBody };
+      } else {
+        unreadPollMetaRef.current = null;
+      }
+      if (!visitorUnreadBaselineDoneRef.current) {
+        visitorUnreadBaselineDoneRef.current = true;
+        prevUnreadRef.current = n;
+        setUnreadTotal(n);
+        return;
+      }
+      setUnreadTotal(n);
     } catch {
       /* ignore */
     }
@@ -246,13 +292,18 @@ export function CustomerChatProvider({
   }, [refreshUnread]);
 
   useEffect(() => {
+    if (!visitorUnreadBaselineDoneRef.current) return;
     if (
       unreadTotal > prevUnreadRef.current &&
       unreadTotal > 0 &&
-      !panelOpen &&
-      document.visibilityState !== "visible"
+      shouldNotifyVisitorChat({ panelOpen })
     ) {
-      notifyBrowser("StichKala", "You have a new message from the shop.");
+      const meta = unreadPollMetaRef.current;
+      showBrowserChatNotification({
+        title: meta?.title ?? "StichKala",
+        body: meta?.body ?? "New message from the shop.",
+        tag: `sk-visitor-unread-${unreadTotal}`,
+      });
     }
     prevUnreadRef.current = unreadTotal;
   }, [unreadTotal, panelOpen]);
@@ -280,8 +331,15 @@ export function CustomerChatProvider({
     const key = `${last._id}:${last.createdAt}`;
     if (lastSeenLatestRef.current === key) return;
     lastSeenLatestRef.current = key;
-    notifyBrowser("StichKala", last.body.slice(0, 120));
-  }, [messages, panelOpen, activeThreadId, clientId]);
+    if (!shouldNotifyVisitorChat({ panelOpen })) return;
+    const chatName =
+      threads.find((t) => t._id === activeThreadId)?.productName ?? "Chat";
+    showBrowserChatNotification({
+      title: `StichKala · ${chatName}`,
+      body: formatChatMessageNotificationBody(last),
+      tag: `sk-visitor-msg-${last._id}`,
+    });
+  }, [messages, panelOpen, activeThreadId, clientId, threads]);
 
   /** Snap to bottom when opening / switching thread; only auto-scroll again when the visitor sends. */
   useEffect(() => {
@@ -462,7 +520,7 @@ export function CustomerChatProvider({
   );
 
   const onPickChatFile = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       e.target.value = "";
       if (!file || !clientId) return;
@@ -470,31 +528,52 @@ export function CustomerChatProvider({
         alert("Please choose a file under 2 MB.");
         return;
       }
-      try {
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("clientId", clientId);
-        const up = await fetch("/api/chat/upload", {
-          method: "POST",
-          body: fd,
-          cache: "no-store",
-        });
-        const uj = await up.json();
-        if (!uj.success || !uj.url) {
-          alert(uj.error || "Upload failed");
-          return;
-        }
-        await sendAttachmentMessage({
-          url: uj.url,
-          mimeType: String(uj.mimeType ?? ""),
-          fileName: String(uj.fileName ?? file.name),
-        });
-      } catch {
-        alert("Upload failed. Try again.");
-      }
+      const isImage = file.type.startsWith("image/");
+      const previewUrl = isImage ? URL.createObjectURL(file) : null;
+      setPendingAttachment({ file, previewUrl, isImage });
     },
-    [clientId, sendAttachmentMessage]
+    [clientId]
   );
+
+  const cancelPendingAttachment = useCallback(() => {
+    setPendingAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  }, []);
+
+  const confirmPendingAttachment = useCallback(async () => {
+    if (!pendingAttachment || !activeThreadId || !clientId) return;
+    setSending(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", pendingAttachment.file);
+      fd.append("clientId", clientId);
+      const up = await fetch("/api/chat/upload", {
+        method: "POST",
+        body: fd,
+        cache: "no-store",
+      });
+      const uj = await up.json();
+      if (!uj.success || !uj.url) {
+        alert(uj.error || "Upload failed");
+        return;
+      }
+      await sendAttachmentMessage({
+        url: uj.url,
+        mimeType: String(uj.mimeType ?? ""),
+        fileName: String(uj.fileName ?? pendingAttachment.file.name),
+      });
+      if (pendingAttachment.previewUrl) {
+        URL.revokeObjectURL(pendingAttachment.previewUrl);
+      }
+      setPendingAttachment(null);
+    } catch {
+      alert("Upload failed. Try again.");
+    } finally {
+      setSending(false);
+    }
+  }, [pendingAttachment, activeThreadId, clientId, sendAttachmentMessage]);
 
   const startNegotiatedCheckout = useCallback(
     async (m: ChatMessageRow) => {
@@ -594,6 +673,24 @@ export function CustomerChatProvider({
     setProductModalId(m.offerProductId);
   };
 
+  const enableNotifications = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      alert("Notifications are not supported in this browser.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotifPerm(permission);
+    if (permission === "granted") {
+      alert(
+        "Notifications enabled — you'll get alerts for new messages when this tab is in the background."
+      );
+    } else {
+      alert(
+        "Notifications were denied. You can allow them later in your browser settings for this site."
+      );
+    }
+  };
+
   return (
     <CustomerChatContext.Provider value={ctx}>
       {children}
@@ -669,6 +766,70 @@ export function CustomerChatProvider({
                   onClick={() => void confirmSendProductLink()}
                 >
                   Send link
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pendingAttachment && (
+          <motion.div
+            className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5 space-y-4"
+            >
+              <h3 className="font-serif text-lg text-text-dark">
+                Send this attachment?
+              </h3>
+              <p className="text-xs text-text-light">
+                Max 2 MB. It will appear in the chat for you and the shop.
+              </p>
+              <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 flex flex-col items-center gap-2 min-h-[120px] justify-center">
+                {pendingAttachment.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={pendingAttachment.previewUrl}
+                    alt=""
+                    className="max-h-40 rounded-lg object-contain"
+                  />
+                ) : (
+                  <FileText className="w-12 h-12 text-text-light" aria-hidden />
+                )}
+                <p className="text-sm font-medium text-text-dark truncate w-full text-center">
+                  {pendingAttachment.file.name}
+                </p>
+                <p className="text-[11px] text-text-light">
+                  {(pendingAttachment.file.size / 1024).toFixed(1)} KB
+                </p>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-full text-sm text-text-light hover:bg-gray-100"
+                  onClick={() => cancelPendingAttachment()}
+                  disabled={sending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 rounded-full text-sm bg-rose text-white hover:bg-rose-dark disabled:opacity-50 inline-flex items-center gap-2"
+                  disabled={sending}
+                  onClick={() => void confirmPendingAttachment()}
+                >
+                  {sending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : null}
+                  Send
                 </button>
               </div>
             </motion.div>
@@ -770,15 +931,20 @@ export function CustomerChatProvider({
                         )}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="text-[10px] text-rose font-medium px-2 py-0.5 rounded-full border border-rose/40 hover:bg-rose/10 shrink-0"
-                      onClick={() => {
-                        void Notification.requestPermission();
-                      }}
-                    >
-                      Alerts
-                    </button>
+                    {notifPerm === "unsupported" ? null : notifPerm ===
+                      "granted" ? (
+                      <span className="text-[10px] text-text-light shrink-0 px-2 max-w-[7rem] leading-tight text-right">
+                        Notifications on
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-[10px] text-rose font-medium px-2 py-1 rounded-full border border-rose/40 hover:bg-rose/10 shrink-0"
+                        onClick={() => void enableNotifications()}
+                      >
+                        Enable notifications
+                      </button>
+                    )}
                     <button
                       type="button"
                       aria-label="Close"
@@ -1088,7 +1254,7 @@ export function CustomerChatProvider({
                       type="file"
                       className="hidden"
                       accept="image/*,.pdf,.doc,.docx,.txt,.zip,.csv,application/*"
-                      onChange={(e) => void onPickChatFile(e)}
+                      onChange={(e) => onPickChatFile(e)}
                     />
                     <button
                       type="button"

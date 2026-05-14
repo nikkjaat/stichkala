@@ -10,12 +10,17 @@ import {
   Paperclip,
   Pencil,
   Trash2,
+  FileText,
 } from "lucide-react";
 import { FiArrowLeft } from "react-icons/fi";
 import { extractProductIdFromChatUrl } from "@/lib/chatProductUrl";
 import ChatProductDetailModal from "@/components/ChatProductDetailModal";
 import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import { chatFetch } from "@/lib/chatFetch";
+import {
+  shouldNotifyAdminChat,
+  showBrowserChatNotification,
+} from "@/lib/chatPushNotification";
 
 type ProductMini = { _id: string; name: string; basePrice: number };
 
@@ -54,18 +59,6 @@ type MessageRow = {
   };
 };
 
-function pushBrowserNotification(title: string, body: string) {
-  if (typeof window === "undefined") return;
-  if (!("Notification" in window) || Notification.permission !== "granted") {
-    return;
-  }
-  try {
-    new Notification(title, { body, tag: "stichkala-admin-chat" });
-  } catch {
-    /* ignore */
-  }
-}
-
 export default function AdminChatPanel({
   products,
   active,
@@ -90,6 +83,11 @@ export default function AdminChatPanel({
     fileName?: string | null;
     isImage: boolean;
   } | null>(null);
+  const [pendingAdminAttachment, setPendingAdminAttachment] = useState<{
+    file: File;
+    previewUrl: string | null;
+    isImage: boolean;
+  } | null>(null);
   const [adminMessageMenu, setAdminMessageMenu] = useState<{
     x: number;
     y: number;
@@ -102,6 +100,7 @@ export default function AdminChatPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const prevUnreadCountRef = useRef(0);
+  const adminUnreadBaselineDoneRef = useRef(false);
   const adminMessagesScrollRef = useRef<HTMLDivElement | null>(null);
   const adminBootThreadRef = useRef<string | null>(null);
   const adminPrevLastMessageIdRef = useRef<string | null>(null);
@@ -118,6 +117,14 @@ export default function AdminChatPanel({
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingAdminAttachment?.previewUrl) {
+        URL.revokeObjectURL(pendingAdminAttachment.previewUrl);
+      }
+    };
+  }, [pendingAdminAttachment?.previewUrl]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -136,22 +143,38 @@ export default function AdminChatPanel({
   const refreshAdminUnread = useCallback(async () => {
     try {
       const r = await chatFetch("/api/chat/admin/unread");
-      const j = await r.json();
-      if (j.success) {
-        const n = Number(j.unread) || 0;
-        if (
-          n > prevUnreadCountRef.current &&
-          prevUnreadCountRef.current > 0 &&
-          !activeRef.current
-        ) {
-          pushBrowserNotification(
-            "StichKala admin",
-            "New customer chat message"
-          );
-        }
+      const j = (await r.json()) as {
+        success?: boolean;
+        unread?: number;
+        notifyTitle?: string;
+        notifyBody?: string;
+      };
+      if (!j.success) return;
+      const n = Number(j.unread) || 0;
+      const title =
+        typeof j.notifyTitle === "string" ? j.notifyTitle : "StichKala admin";
+      const body =
+        typeof j.notifyBody === "string"
+          ? j.notifyBody
+          : "New customer message";
+      if (!adminUnreadBaselineDoneRef.current) {
+        adminUnreadBaselineDoneRef.current = true;
         prevUnreadCountRef.current = n;
         onUnreadRef.current?.(n);
+        return;
       }
+      if (
+        n > prevUnreadCountRef.current &&
+        shouldNotifyAdminChat({ chatsTabActive: activeRef.current })
+      ) {
+        showBrowserChatNotification({
+          title,
+          body,
+          tag: `sk-admin-panel-${n}`,
+        });
+      }
+      prevUnreadCountRef.current = n;
+      onUnreadRef.current?.(n);
     } catch {
       /* ignore */
     }
@@ -329,34 +352,7 @@ export default function AdminChatPanel({
     }
   };
 
-  const sendAdminAttachment = async (payload: {
-    url: string;
-    mimeType: string;
-    fileName: string;
-  }) => {
-    if (!selectedId || sending) return;
-    setSending(true);
-    try {
-      const r = await chatFetch(`/api/chat/admin/threads/${selectedId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attachment: payload }),
-      });
-      const j = await r.json();
-      if (j.success && j.message) {
-        setMessages((prev) => [...prev, j.message]);
-        void loadConversations();
-      } else if (r.status === 401) {
-        alert("Session expired. Log in to the admin panel again.");
-      } else {
-        alert(j.error || "Could not send file");
-      }
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const onPickAdminFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickAdminFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !selectedId) return;
@@ -364,9 +360,24 @@ export default function AdminChatPanel({
       alert("Please choose a file under 2 MB.");
       return;
     }
+    const isImage = file.type.startsWith("image/");
+    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+    setPendingAdminAttachment({ file, previewUrl, isImage });
+  };
+
+  const cancelPendingAdminAttachment = () => {
+    setPendingAdminAttachment((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  };
+
+  const confirmPendingAdminAttachment = async () => {
+    if (!pendingAdminAttachment || !selectedId) return;
+    setSending(true);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", pendingAdminAttachment.file);
       const up = await fetch("/api/chat/upload", {
         method: "POST",
         body: fd,
@@ -377,13 +388,34 @@ export default function AdminChatPanel({
         alert(uj.error || "Upload failed");
         return;
       }
-      await sendAdminAttachment({
-        url: uj.url,
-        mimeType: String(uj.mimeType ?? ""),
-        fileName: String(uj.fileName ?? file.name),
+      const r = await chatFetch(`/api/chat/admin/threads/${selectedId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attachment: {
+            url: uj.url,
+            mimeType: String(uj.mimeType ?? ""),
+            fileName: String(uj.fileName ?? pendingAdminAttachment.file.name),
+          },
+        }),
       });
+      const j = await r.json();
+      if (j.success && j.message) {
+        setMessages((prev) => [...prev, j.message]);
+        void loadConversations();
+        if (pendingAdminAttachment.previewUrl) {
+          URL.revokeObjectURL(pendingAdminAttachment.previewUrl);
+        }
+        setPendingAdminAttachment(null);
+      } else if (r.status === 401) {
+        alert("Session expired. Log in to the admin panel again.");
+      } else {
+        alert(j.error || "Could not send file");
+      }
     } catch {
       alert("Upload failed. Try again.");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -790,7 +822,7 @@ export default function AdminChatPanel({
           type="file"
           className="hidden"
           accept="image/*,.pdf,.doc,.docx,.txt,.zip,.csv,application/*"
-          onChange={(e) => void onPickAdminFile(e)}
+          onChange={(e) => onPickAdminFile(e)}
         />
         <button
           type="button"
@@ -839,6 +871,63 @@ export default function AdminChatPanel({
         isImage={attachmentLightbox?.isImage ?? false}
         onClose={() => setAttachmentLightbox(null)}
       />
+
+      {pendingAdminAttachment ? (
+        <div
+          className="fixed inset-0 z-[240] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal
+          aria-label="Confirm attachment"
+        >
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5 space-y-4">
+            <h3 className="font-serif text-lg text-text-dark">
+              Send this attachment?
+            </h3>
+            <p className="text-xs text-text-light">
+              Max 2 MB. The customer will see it in this chat.
+            </p>
+            <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 flex flex-col items-center gap-2 min-h-[120px] justify-center">
+              {pendingAdminAttachment.previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={pendingAdminAttachment.previewUrl}
+                  alt=""
+                  className="max-h-40 rounded-lg object-contain"
+                />
+              ) : (
+                <FileText className="w-12 h-12 text-text-light" aria-hidden />
+              )}
+              <p className="text-sm font-medium text-text-dark truncate w-full text-center">
+                {pendingAdminAttachment.file.name}
+              </p>
+              <p className="text-[11px] text-text-light">
+                {(pendingAdminAttachment.file.size / 1024).toFixed(1)} KB
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="px-4 py-2 rounded-full text-sm text-text-light hover:bg-gray-100"
+                onClick={() => cancelPendingAdminAttachment()}
+                disabled={sending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 rounded-full text-sm bg-rose text-white hover:bg-rose-dark disabled:opacity-50 inline-flex items-center gap-2"
+                disabled={sending}
+                onClick={() => void confirmPendingAdminAttachment()}
+              >
+                {sending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : null}
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {adminMessageMenu ? (
         <div

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import ChatThread from "@/models/ChatThread";
 import ChatMessage from "@/models/ChatMessage";
+import { formatChatMessageNotificationBody } from "@/lib/chatPushNotification";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,39 @@ export async function GET(request: NextRequest) {
       sender: "admin",
       $or: [{ readAt: { $exists: false } }, { readAt: null }],
     });
-    return NextResponse.json({ success: true, unread });
+
+    let notifyTitle: string | undefined;
+    let notifyBody: string | undefined;
+    if (unread > 0) {
+      const latestUnread = await ChatMessage.findOne({
+        threadId: { $in: ids },
+        sender: "admin",
+        $or: [{ readAt: { $exists: false } }, { readAt: null }],
+      })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      if (latestUnread) {
+        const th = await ChatThread.findById(latestUnread.threadId)
+          .select("productName lastEnquiredProductName")
+          .lean();
+        const chatName =
+          (th as { lastEnquiredProductName?: string } | null)
+            ?.lastEnquiredProductName ||
+          (th as { productName?: string } | null)?.productName ||
+          "StichKala";
+        notifyTitle = `StichKala · ${chatName}`;
+        notifyBody = formatChatMessageNotificationBody(
+          latestUnread as Parameters<typeof formatChatMessageNotificationBody>[0]
+        );
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      unread,
+      ...(notifyTitle && notifyBody ? { notifyTitle, notifyBody } : {}),
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

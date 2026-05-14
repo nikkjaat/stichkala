@@ -9,6 +9,7 @@ import { X, ChevronLeft, ChevronRight, ArrowRight, MessageCircle } from "lucide-
 import CustomizationModal from "./CustomizationModal";
 import { useRouter } from "next/navigation";
 import { useCustomerChat } from "@/components/CustomerChat";
+import { useAdminSession } from "@/hooks/useAdminSession";
 
 interface Product {
   _id: string;
@@ -28,6 +29,7 @@ interface Product {
 
 export default function Products() {
   const chat = useCustomerChat();
+  const { authenticated: adminSession } = useAdminSession();
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -110,6 +112,7 @@ export default function Products() {
   };
 
   const handleChatAboutProduct = async () => {
+    if (adminSession) return;
     if (!selectedProduct) return;
     const ok = await chat?.sendProductLinkInChatSilent?.({
       _id: selectedProduct._id,
@@ -445,6 +448,7 @@ export default function Products() {
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300" />
 
+                        {!adminSession ? (
                         <button
                           type="button"
                           aria-label={`Chat about ${product.name}`}
@@ -459,6 +463,7 @@ export default function Products() {
                         >
                           <MessageCircle className="w-4 h-4" />
                         </button>
+                        ) : null}
                       </div>
 
                       {/* Product Info */}
@@ -726,7 +731,11 @@ export default function Products() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-3 sm:pt-4">
+                  <div
+                    className={`grid grid-cols-1 gap-2 sm:gap-3 pt-3 sm:pt-4 ${
+                      adminSession ? "sm:grid-cols-2" : "sm:grid-cols-3"
+                    }`}
+                  >
                     <motion.button
                       type="button"
                       onClick={() => handleCustomize(selectedProduct)}
@@ -738,6 +747,7 @@ export default function Products() {
                         ? "Customize & Order"
                         : "Order Now"}
                     </motion.button>
+                    {!adminSession ? (
                     <motion.button
                       type="button"
                       onClick={() => void handleChatAboutProduct()}
@@ -748,6 +758,7 @@ export default function Products() {
                       <MessageCircle className="w-5 h-5 shrink-0" />
                       Chat
                     </motion.button>
+                    ) : null}
                     <motion.button
                       type="button"
                       onClick={handleCloseModal}

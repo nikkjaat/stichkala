@@ -122,6 +122,22 @@ export async function POST(request: NextRequest) {
       await thread.save();
     }
 
+    const messageCount = await ChatMessage.countDocuments({
+      threadId: thread._id,
+    });
+    if (messageCount === 0) {
+      const welcome =
+        "Welcome to StichKala! Ask us about products, sizes, delivery, or custom work — we reply here as soon as we can.";
+      await ChatMessage.create({
+        threadId: thread._id,
+        sender: "admin",
+        kind: "text",
+        body: welcome,
+      });
+      thread.lastMessageAt = new Date();
+      await thread.save();
+    }
+
     await syncVisitorPublicIdForClient(clientId);
 
     const refreshed = await ChatThread.findById(thread._id).lean();

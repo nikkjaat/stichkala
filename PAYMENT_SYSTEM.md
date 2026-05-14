@@ -209,7 +209,7 @@ RAZORPAY_KEY_SECRET=LKysLJvha3akQAIFP6fWqSLZ
 NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_RUCS9zfXEC51PQ
 
 # Email
-EMAIL_USER=your_email@gmail.com
+EMAIL_USER=stichkalaa@gmail.com
 EMAIL_PASSWORD=your_app_password
 
 # Site URL
@@ -317,4 +317,4 @@ const upiDetails = {
 ## Support
 For any issues or questions:
 - WhatsApp: +919760258097
-- Email: vishakha.baliyan26@gmail.com
+- Email: stichkalaa@gmail.com

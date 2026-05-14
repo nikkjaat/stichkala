@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { FaEnvelope, FaInstagram, FaFacebook } from "react-icons/fa";
 import { useState } from "react";
+import { CONTACT_EMAIL } from "@/lib/siteContact";
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -152,7 +153,7 @@ export default function Contact() {
 
             <div className="mt-8 sm:mt-10 md:mt-12 flex justify-center gap-4 sm:gap-6">
               <motion.a
-                href="mailto:thynkunique@gmail.com"
+                href={`mailto:${CONTACT_EMAIL}`}
                 className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-blush rounded-full flex items-center justify-center text-text-dark hover:bg-rose hover:text-white transition-colors"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
