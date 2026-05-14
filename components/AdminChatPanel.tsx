@@ -242,6 +242,18 @@ export default function AdminChatPanel({
   );
 
   useEffect(() => {
+    const onChatSent = (ev: Event) => {
+      const t = (ev as CustomEvent<{ threadId?: string }>).detail?.threadId;
+      void refreshAdminUnread();
+      void loadConversations();
+      if (t && selectedId === t) void loadMessages(t);
+    };
+    window.addEventListener("sk-notification-chat-sent", onChatSent);
+    return () =>
+      window.removeEventListener("sk-notification-chat-sent", onChatSent);
+  }, [refreshAdminUnread, loadConversations, loadMessages, selectedId]);
+
+  useEffect(() => {
     if (!active) {
       setSelectedId(null);
       setSelectedClientId(null);

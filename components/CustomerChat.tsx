@@ -502,6 +502,18 @@ export function CustomerChatProvider({
       window.removeEventListener("sk-notification-read-finished", onReadDone);
   }, [refreshUnread]);
 
+  useEffect(() => {
+    const onChatSent = (ev: Event) => {
+      const t = (ev as CustomEvent<{ threadId?: string }>).detail?.threadId;
+      void refreshUnread();
+      if (!t || !clientId) return;
+      if (panelOpen && activeThreadId === t) void loadMessages(t);
+    };
+    window.addEventListener("sk-notification-chat-sent", onChatSent);
+    return () =>
+      window.removeEventListener("sk-notification-chat-sent", onChatSent);
+  }, [refreshUnread, clientId, panelOpen, activeThreadId, loadMessages]);
+
   const openGeneralChat = useCallback(async () => {
     if (!clientId) return;
     const r = await chatFetch("/api/chat/threads", {

@@ -195,7 +195,7 @@ function showBrowserChatNotificationLegacy(opts: BrowserChatNotificationOpts): v
   const replyHref = withActions ? buildReplyClickHref(opts) : clickHref;
   const notificationOpts: NotificationOptions & {
     vibrate?: number[];
-    actions?: Array<{ action: string; title: string }>;
+    actions?: NotificationAction[];
   } = {
     body: body || "New message",
     tag: opts.tag ?? "stichkala-chat",
@@ -207,7 +207,12 @@ function showBrowserChatNotificationLegacy(opts: BrowserChatNotificationOpts): v
   };
   if (withActions) {
     notificationOpts.actions = [
-      { action: "reply", title: "Reply" },
+      {
+        action: "reply",
+        title: "Reply",
+        type: "text",
+        placeholder: "Write a message…",
+      } as NotificationAction,
       { action: "read", title: "Read" },
     ];
   }
@@ -228,7 +233,12 @@ function showBrowserChatNotificationLegacy(opts: BrowserChatNotificationOpts): v
     };
   } catch {
     try {
-      delete notificationOpts.actions;
+      if (withActions) {
+        notificationOpts.actions = [
+          { action: "reply", title: "Reply" },
+          { action: "read", title: "Read" },
+        ];
+      }
       const n2 = new Notification(title, notificationOpts);
       n2.onclick = () => {
         try {
@@ -280,26 +290,44 @@ async function showBrowserChatNotificationAsync(
 
   const reg = await getChatNotifyServiceWorkerRegistration();
   if (reg) {
+    const common: globalThis.NotificationOptions = {
+      body: body || "New message",
+      tag,
+      icon: icon ?? "/next.svg",
+      badge: icon ?? "/next.svg",
+      silent: false,
+      requireInteraction: false,
+      renotify: true,
+      vibrate: [180, 80, 180],
+      data,
+    };
     try {
-      await reg.showNotification(title, {
-        body: body || "New message",
-        tag,
-        icon: icon ?? "/next.svg",
-        badge: icon ?? "/next.svg",
-        silent: false,
-        requireInteraction: false,
-        renotify: true,
-        vibrate: [180, 80, 180],
-        data,
-        ...(withActions && readThreadId
-          ? {
-              actions: [
-                { action: "reply", title: "Reply" },
-                { action: "read", title: "Read" },
-              ],
-            }
-          : {}),
-      });
+      if (withActions && readThreadId) {
+        try {
+          await reg.showNotification(title, {
+            ...common,
+            actions: [
+              {
+                action: "reply",
+                title: "Reply",
+                type: "text",
+                placeholder: "Write a message…",
+              } as NotificationAction,
+              { action: "read", title: "Read" },
+            ],
+          });
+        } catch {
+          await reg.showNotification(title, {
+            ...common,
+            actions: [
+              { action: "reply", title: "Reply" },
+              { action: "read", title: "Read" },
+            ],
+          });
+        }
+      } else {
+        await reg.showNotification(title, common);
+      }
       return;
     } catch {
       /* fall through to legacy */

@@ -50,9 +50,26 @@ export default function NotificationNavBridge() {
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      const d = event.data as { type?: string; url?: string } | null;
-      if (!d || d.type !== SW_MSG || typeof d.url !== "string") return;
-      navigateFromNotificationUrl(router, d.url);
+      const d = event.data as {
+        type?: string;
+        url?: string;
+        threadId?: string;
+      } | null;
+      if (!d?.type) return;
+      if (d.type === SW_MSG && typeof d.url === "string") {
+        navigateFromNotificationUrl(router, d.url);
+        return;
+      }
+      if (d.type === "sk-notification-chat-sent") {
+        window.dispatchEvent(
+          new CustomEvent("sk-notification-chat-sent", {
+            detail: {
+              threadId:
+                typeof d.threadId === "string" ? d.threadId : undefined,
+            },
+          })
+        );
+      }
     };
     const sw = navigator.serviceWorker;
     if (!sw?.addEventListener) return;

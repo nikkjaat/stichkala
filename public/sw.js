@@ -63,11 +63,84 @@ function postNavigateToClients(target) {
     });
 }
 
+/** Chromium: inline reply text from notification action type "text". */
+function normalizeReplyText(event) {
+  if (typeof event.reply === "string") return Promise.resolve(event.reply);
+  if (event.reply && typeof event.reply.then === "function") {
+    return event.reply.then(function (x) {
+      return String(x || "");
+    });
+  }
+  return Promise.resolve("");
+}
+
+function notifyAllClients(payload) {
+  return self.clients
+    .matchAll({ type: "window", includeUncontrolled: true })
+    .then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        try {
+          list[i].postMessage(payload);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+    });
+}
+
+function sendNotifChatMessage(data, text) {
+  var tid = typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
+  var isAdmin = data.readAsAdmin === "1";
+  var cid = typeof data.readClientId === "string" ? data.readClientId.trim() : "";
+  if (!tid || !text) return Promise.resolve();
+  var origin = self.location.origin;
+  var url;
+  var body;
+  if (isAdmin) {
+    url =
+      origin +
+      "/api/chat/admin/threads/" +
+      encodeURIComponent(tid) +
+      "/messages";
+    body = JSON.stringify({ text: text });
+  } else {
+    if (!cid) return Promise.resolve();
+    url =
+      origin + "/api/chat/threads/" + encodeURIComponent(tid) + "/messages";
+    body = JSON.stringify({ clientId: cid, text: text });
+  }
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body,
+    credentials: isAdmin ? "include" : "same-origin",
+  })
+    .then(function (r) {
+      if (!r.ok) return Promise.reject(new Error("send failed"));
+      return r.json();
+    })
+    .then(function (json) {
+      if (!json || !json.success) return Promise.reject(new Error("send rejected"));
+      return notifyAllClients({
+        type: "sk-notification-chat-sent",
+        threadId: tid,
+      });
+    })
+    .catch(function () {
+      return postNavigateToClients(
+        resolveTargetUrl(data.replyUrl || data.url)
+      );
+    });
+}
+
 self.addEventListener("notificationclick", function (event) {
   var notification = event.notification;
-  notification.close();
   var data = notification.data || {};
   var action = event.action || "";
+  var replyPromise =
+    action === "reply" ? normalizeReplyText(event) : Promise.resolve("");
+
+  notification.close();
 
   if (action === "read") {
     var tid = typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
@@ -78,7 +151,10 @@ self.addEventListener("notificationclick", function (event) {
     var bodyObj = isAdmin ? { asAdmin: true } : { clientId: cid };
     event.waitUntil(
       fetch(
-        self.location.origin + "/api/chat/threads/" + encodeURIComponent(tid) + "/read",
+        self.location.origin +
+          "/api/chat/threads/" +
+          encodeURIComponent(tid) +
+          "/read",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -87,27 +163,26 @@ self.addEventListener("notificationclick", function (event) {
         }
       )
         .then(function () {
-          return self.clients
-            .matchAll({ type: "window", includeUncontrolled: true })
-            .then(function (list) {
-              for (var j = 0; j < list.length; j++) {
-                try {
-                  list[j].postMessage({ type: "sk-notification-read-finished" });
-                } catch (e) {
-                  /* ignore */
-                }
-              }
-            });
+          return notifyAllClients({ type: "sk-notification-read-finished" });
         })
         .catch(function () {})
     );
     return;
   }
 
-  var raw =
-    action === "reply"
-      ? data.replyUrl || data.url
-      : data.url;
-  var target = resolveTargetUrl(raw);
-  event.waitUntil(postNavigateToClients(target));
+  if (action === "reply") {
+    event.waitUntil(
+      replyPromise.then(function (raw) {
+        var text = String(raw || "").trim();
+        if (text) return sendNotifChatMessage(data, text);
+        return postNavigateToClients(
+          resolveTargetUrl(data.replyUrl || data.url)
+        );
+      })
+    );
+    return;
+  }
+
+  var raw = typeof data.url === "string" ? data.url : "/";
+  event.waitUntil(postNavigateToClients(resolveTargetUrl(raw)));
 });
