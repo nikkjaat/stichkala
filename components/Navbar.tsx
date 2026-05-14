@@ -3,13 +3,31 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { HiMenu, HiX } from "react-icons/hi";
+import { Download } from "lucide-react";
 import ChatNotifToggle from "@/components/ChatNotifToggle";
+import {
+  isStandaloneDisplayMode,
+  isLikelyIosForInstallHint,
+  isMobileNavBreakpoint,
+} from "@/lib/pwaInstallUtils";
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+const PWA_SHEET_SESSION_KEY = "sk_pwa_install_sheet_v1";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
+  const [deferredInstall, setDeferredInstall] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [iosHelpOpen, setIosHelpOpen] = useState(false);
+  const [installSheetOpen, setInstallSheetOpen] = useState(false);
+  const [isMobileBp, setIsMobileBp] = useState(false);
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -19,6 +37,94 @@ export default function Navbar() {
     { href: "/#contact", label: "Contact" },
   ];
 
+  const [standalone, setStandalone] = useState(false);
+
+  useEffect(() => {
+    setStandalone(isStandaloneDisplayMode());
+  }, []);
+
+  const showInstallEntry =
+    !standalone &&
+    (deferredInstall !== null ||
+      (isMobileNavBreakpoint() && isLikelyIosForInstallHint()));
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsMobileBp(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isStandaloneDisplayMode()) return;
+    const onBip = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstall(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", onBip);
+    const onInstalled = () => setStandalone(true);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBip);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  /** One mobile bottom sheet per session when install is possible. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isStandaloneDisplayMode()) return;
+    if (sessionStorage.getItem(PWA_SHEET_SESSION_KEY)) return;
+    if (!isMobileBp) return;
+
+    const ios = isLikelyIosForInstallHint();
+    if (deferredInstall) {
+      setInstallSheetOpen(true);
+      return;
+    }
+    if (!ios) return;
+    const id = window.setTimeout(() => setInstallSheetOpen(true), 2600);
+    return () => clearTimeout(id);
+  }, [deferredInstall, isMobileBp]);
+
+  const dismissInstallSheet = useCallback(() => {
+    try {
+      sessionStorage.setItem(PWA_SHEET_SESSION_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    setInstallSheetOpen(false);
+  }, []);
+
+  const runInstallOrExplain = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (isStandaloneDisplayMode()) return;
+    if (deferredInstall) {
+      try {
+        await deferredInstall.prompt();
+        await deferredInstall.userChoice;
+      } catch {
+        /* ignore */
+      }
+      setDeferredInstall(null);
+      dismissInstallSheet();
+      setIosHelpOpen(false);
+      setIsOpen(false);
+      return;
+    }
+    if (isLikelyIosForInstallHint()) {
+      setIosHelpOpen(true);
+      dismissInstallSheet();
+      setIsOpen(false);
+      return;
+    }
+    window.alert(
+      "To install this app, open the site in Google Chrome and use the browser menu → Install app (or similar)."
+    );
+  }, [deferredInstall, dismissInstallSheet]);
+
   // Close navbar when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -27,17 +133,17 @@ export default function Navbar() {
       }
     };
 
-    // Close navbar when pressing Escape key
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsOpen(false);
+        setIosHelpOpen(false);
+        setInstallSheetOpen(false);
       }
     };
 
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("keydown", handleEscapeKey);
-      // Prevent body scroll when mobile menu is open
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
@@ -50,6 +156,19 @@ export default function Navbar() {
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIosHelpOpen(false);
+        setInstallSheetOpen(false);
+      }
+    };
+    if (iosHelpOpen || installSheetOpen) {
+      document.addEventListener("keydown", onEsc);
+      return () => document.removeEventListener("keydown", onEsc);
+    }
+  }, [iosHelpOpen, installSheetOpen]);
+
   // Close navbar when route changes
   useEffect(() => {
     setIsOpen(false);
@@ -59,6 +178,12 @@ export default function Navbar() {
     setIsOpen(false);
   };
 
+  const installButtonClass =
+    "inline-flex items-center justify-center gap-1.5 rounded-full border-2 border-rose bg-white px-3 py-1.5 text-sm font-semibold text-rose shadow-sm transition-colors hover:bg-rose hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-rose focus-visible:ring-offset-2";
+
+  const installIconOnlyClass =
+    "inline-flex items-center justify-center rounded-full border-2 border-rose bg-white p-2 text-rose shadow-sm transition-colors hover:bg-rose hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-rose focus-visible:ring-offset-2";
+
   return (
     <nav
       className={`fixed top-0 left-0 right-0 z-50 bg-opacity-95 backdrop-blur-sm shadow-sm ${
@@ -67,7 +192,7 @@ export default function Navbar() {
       ref={navRef}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between h-16 sm:h-20">
+        <div className="flex items-center justify-between h-16 sm:h-20 gap-2">
           {/* Logo */}
           <Link href="/">
             <motion.div
@@ -91,7 +216,7 @@ export default function Navbar() {
             </motion.div>
           </Link>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation + install */}
           <div className="hidden lg:flex items-center space-x-6 xl:space-x-8">
             {navLinks.map((link) => (
               <Link key={link.href} href={link.href}>
@@ -104,29 +229,55 @@ export default function Navbar() {
                 </motion.span>
               </Link>
             ))}
+            {!standalone && deferredInstall ? (
+              <motion.button
+                type="button"
+                className={installButtonClass}
+                onClick={() => void runInstallOrExplain()}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                aria-label="Install StichKalaa app"
+              >
+                <Download className="h-4 w-4 shrink-0" aria-hidden />
+                Install app
+              </motion.button>
+            ) : null}
           </div>
 
-          {/* Mobile Menu Button */}
-          <motion.button
-            className="lg:hidden text-text-dark p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            onClick={() => setIsOpen(!isOpen)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            aria-label="Toggle menu"
-          >
-            {isOpen ? (
-              <HiX className="text-2xl sm:text-3xl" />
-            ) : (
-              <HiMenu className="text-2xl sm:text-3xl" />
-            )}
-          </motion.button>
+          {/* Mobile: install + menu */}
+          <div className="flex items-center gap-1.5 lg:hidden">
+            {showInstallEntry ? (
+              <motion.button
+                type="button"
+                className={installIconOnlyClass}
+                onClick={() => void runInstallOrExplain()}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                aria-label="Download and install app"
+              >
+                <Download className="h-5 w-5" aria-hidden />
+              </motion.button>
+            ) : null}
+            <motion.button
+              className="text-text-dark p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              onClick={() => setIsOpen(!isOpen)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              aria-label="Toggle menu"
+            >
+              {isOpen ? (
+                <HiX className="text-2xl sm:text-3xl" />
+              ) : (
+                <HiMenu className="text-2xl sm:text-3xl" />
+              )}
+            </motion.button>
+          </div>
         </div>
 
         {/* Mobile Navigation */}
         <AnimatePresence>
           {isOpen && (
             <>
-              {/* Backdrop overlay */}
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -136,13 +287,12 @@ export default function Navbar() {
                 onClick={() => setIsOpen(false)}
               />
 
-              {/* Mobile menu */}
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3 }}
-                className="lg:hidden border-t border-gray-200 bg-white relative z-50  rounded-lg"
+                className="lg:hidden border-t border-gray-200 bg-white relative z-50 rounded-lg"
               >
                 <div className="flex flex-col space-y-1 py-4 border-b border-gray-200 mx-4">
                   {navLinks.map((link, index) => (
@@ -164,11 +314,34 @@ export default function Navbar() {
                     </motion.div>
                   ))}
                 </div>
+                {showInstallEntry ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    transition={{ delay: navLinks.length * 0.1 }}
+                    className="px-4 py-3 mx-4 border-b border-gray-200"
+                  >
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-rose px-4 py-3 text-base font-semibold text-white shadow-md transition-colors hover:bg-rose-dark"
+                      onClick={() => void runInstallOrExplain()}
+                    >
+                      <Download className="h-5 w-5 shrink-0" aria-hidden />
+                      Download & install app
+                    </button>
+                    <p className="mt-2 text-center text-xs text-text-light">
+                      Adds StichKalaa to your home screen like a native app
+                    </p>
+                  </motion.div>
+                ) : null}
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 8 }}
-                  transition={{ delay: navLinks.length * 0.1 }}
+                  transition={{
+                    delay: (navLinks.length + (showInstallEntry ? 1 : 0)) * 0.1,
+                  }}
                   className="px-4 py-4 mx-4 border-b border-gray-200"
                 >
                   <p className="text-xs text-text-light mb-2">
@@ -181,6 +354,122 @@ export default function Navbar() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Mobile install promo sheet (once per session) */}
+      <AnimatePresence>
+        {installSheetOpen &&
+        !isStandaloneDisplayMode() &&
+        isMobileNavBreakpoint() ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/40 p-4 lg:hidden"
+            role="dialog"
+            aria-modal
+            aria-labelledby="pwa-sheet-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) dismissInstallSheet();
+            }}
+          >
+            <motion.div
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              className="rounded-2xl bg-white p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2
+                id="pwa-sheet-title"
+                className="font-serif text-lg font-semibold text-text-dark"
+              >
+                Install StichKalaa
+              </h2>
+              <p className="mt-2 text-sm text-text-light leading-relaxed">
+                {deferredInstall
+                  ? "Install our app for quick access, faster loading, and notifications on your phone."
+                  : isLikelyIosForInstallHint()
+                    ? "Add StichKalaa to your Home Screen — open the steps below after tapping Install."
+                    : "Install our app for the best experience on your phone."}
+              </p>
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  className="rounded-full border border-gray-300 px-4 py-2.5 text-sm font-medium text-text-dark hover:bg-gray-50"
+                  onClick={dismissInstallSheet}
+                >
+                  Not now
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full bg-rose px-4 py-2.5 text-sm font-semibold text-white shadow hover:bg-rose-dark"
+                  onClick={() => void runInstallOrExplain()}
+                >
+                  {deferredInstall ? "Install" : "How to install"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* iOS Safari: Add to Home Screen instructions */}
+      <AnimatePresence>
+        {iosHelpOpen ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-4 sm:items-center"
+            role="dialog"
+            aria-modal
+            aria-labelledby="ios-install-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIosHelpOpen(false);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2
+                id="ios-install-title"
+                className="font-serif text-xl font-semibold text-text-dark"
+              >
+                Add to Home Screen
+              </h2>
+              <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm text-text-dark leading-relaxed">
+                <li>
+                  Tap the <strong>Share</strong> button{" "}
+                  <span className="whitespace-nowrap">(square with arrow up)</span>{" "}
+                  at the bottom of Safari.
+                </li>
+                <li>
+                  Scroll down and tap <strong>Add to Home Screen</strong>.
+                </li>
+                <li>
+                  Tap <strong>Add</strong> in the top-right corner.
+                </li>
+              </ol>
+              <p className="mt-4 text-xs text-text-light">
+                You need Safari on iPhone or iPad. Chrome on iOS may open this in
+                Safari — use Share from there if needed.
+              </p>
+              <button
+                type="button"
+                className="mt-6 w-full rounded-full bg-rose py-3 text-sm font-semibold text-white hover:bg-rose-dark"
+                onClick={() => setIosHelpOpen(false)}
+              >
+                Got it
+              </button>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </nav>
   );
 }
