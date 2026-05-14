@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import CustomizationModal from "./CustomizationModal";
 import { X, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
 import { useCustomerChat } from "@/components/CustomerChat";
@@ -21,6 +21,7 @@ interface Product {
     colors: string[];
     sizes: string[];
     materials: string[];
+    sizeUnit?: "inch" | "cm" | "m";
   };
 }
 
@@ -138,8 +139,34 @@ const ALL_PRODUCTS_SAMPLE_FALLBACK: Product[] = [
   },
 ];
 
+function normalizeProductFromApi(raw: Record<string, unknown>): Product {
+  const opts = (raw.options as Record<string, unknown>) || {};
+  const sizes = Array.isArray(opts.sizes) ? (opts.sizes as string[]) : [];
+  const materials = Array.isArray(opts.materials)
+    ? (opts.materials as string[])
+    : [];
+  return {
+    _id: String(raw._id),
+    name: String(raw.name ?? ""),
+    category: String(raw.category ?? ""),
+    description: String(raw.description ?? ""),
+    basePrice: Number(raw.basePrice) || 0,
+    images: Array.isArray(raw.images) ? (raw.images as string[]) : [],
+    customizable: Boolean(raw.customizable),
+    options: {
+      colors: Array.isArray(opts.colors) ? (opts.colors as string[]) : [],
+      sizes: sizes.length ? sizes : [""],
+      materials: materials.length ? materials : ["Cotton thread"],
+      ...(opts.sizeUnit
+        ? { sizeUnit: opts.sizeUnit as "inch" | "cm" | "m" }
+        : {}),
+    },
+  };
+}
+
 export default function AllProducts() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const chat = useCustomerChat();
   const { authenticated: adminSession } = useAdminSession();
   const [products, setProducts] = useState<Product[]>([]);
@@ -158,12 +185,17 @@ export default function AllProducts() {
   const modalScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const fullScreenRef = useRef<HTMLDivElement>(null);
+  const skipDeepLinkReopenRef = useRef(false);
 
   const [categories, setCategories] = useState<
     { id: string; name: string; emoji: string }[]
   >([{ id: "all", name: "All Products", emoji: "✨" }]);
 
   const handleCloseModal = useCallback(() => {
+    if (searchParams.get("product")?.trim()) {
+      skipDeepLinkReopenRef.current = true;
+      router.replace("/products", { scroll: false });
+    }
     setSelectedProduct(null);
     setModalImageIndex(0);
     setFullScreenImageIndex(0);
@@ -171,7 +203,7 @@ export default function AllProducts() {
     if (modalScrollIntervalRef.current) {
       clearInterval(modalScrollIntervalRef.current);
     }
-  }, []);
+  }, [router, searchParams]);
 
   const handleCloseFullScreen = useCallback(() => {
     setIsFullScreenImage(false);
@@ -473,16 +505,77 @@ export default function AllProducts() {
     fetchProducts();
   }, []);
 
-  const productHighlightId = searchParams.get("product");
+  const productHighlightId = searchParams.get("product")?.trim();
+
+  /** Open product detail modal when visiting /products?product=… (email / push link). */
   useEffect(() => {
-    if (!productHighlightId || loading) return;
-    const t = window.setTimeout(() => {
-      document
-        .getElementById(`product-card-${productHighlightId}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 400);
-    return () => window.clearTimeout(t);
-  }, [productHighlightId, loading, products]);
+    if (!productHighlightId || loading) {
+      if (!productHighlightId) skipDeepLinkReopenRef.current = false;
+      return;
+    }
+    if (skipDeepLinkReopenRef.current) {
+      skipDeepLinkReopenRef.current = false;
+      return;
+    }
+    if (
+      selectedProduct &&
+      selectedProduct._id !== productHighlightId
+    ) {
+      return;
+    }
+    if (selectedProduct?._id === productHighlightId) return;
+
+    const ac = new AbortController();
+
+    const applyOpen = (p: Product) => {
+      if (categories.some((c) => c.id === p.category)) {
+        setSelectedCategory(p.category);
+      } else {
+        setSelectedCategory("all");
+      }
+      setSelectedProduct(p);
+      setModalImageIndex(0);
+      setFullScreenImageIndex(0);
+      setIsFullScreenImage(false);
+      window.setTimeout(() => {
+        document
+          .getElementById(`product-card-${p._id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 350);
+    };
+
+    const fromList = products.find((p) => p._id === productHighlightId);
+    if (fromList) {
+      applyOpen(fromList);
+      return () => ac.abort();
+    }
+
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/products/${encodeURIComponent(productHighlightId)}`,
+          { signal: ac.signal }
+        );
+        const j = (await r.json()) as {
+          success?: boolean;
+          product?: Record<string, unknown>;
+        };
+        if (!j.success || !j.product) return;
+        applyOpen(normalizeProductFromApi(j.product));
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        console.error("Deep link product fetch failed:", e);
+      }
+    })();
+
+    return () => ac.abort();
+  }, [
+    productHighlightId,
+    loading,
+    products,
+    categories,
+    selectedProduct,
+  ]);
 
   const filteredProducts =
     selectedCategory === "all"

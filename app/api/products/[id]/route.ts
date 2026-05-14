@@ -1,8 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Product from '@/models/Product';
-import mongoose from 'mongoose';
-import { deleteImageByUrl } from '@/lib/cloudinary';
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import connectDB from "@/lib/mongodb";
+import Product from "@/models/Product";
+import mongoose from "mongoose";
+import { deleteImageByUrl } from "@/lib/cloudinary";
+import {
+  ADMIN_SESSION_COOKIE,
+  verifySessionCookieValue,
+} from "@/lib/adminSession";
+
+async function requireAdmin(): Promise<boolean> {
+  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value;
+  return verifySessionCookieValue(token);
+}
 
 /** Public read for storefront / chat preview. Optional threadId+clientId returns active negotiated offer for that product. */
 export async function GET(
@@ -80,6 +90,13 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (!(await requireAdmin())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     await connectDB();
     const body = await request.json();
 
@@ -126,6 +143,13 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    if (!(await requireAdmin())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     await connectDB();
 
     const product = await Product.findById(params.id);

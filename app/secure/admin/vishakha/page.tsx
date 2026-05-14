@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AdminChatPanel from "@/components/AdminChatPanel";
+import AdminContactSubmissionsPanel from "@/components/AdminContactSubmissionsPanel";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiPlus,
@@ -299,9 +300,9 @@ function AdminCategoryManager({
 
 export default function AdminPage() {
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"orders" | "products" | "chats">(
-    "orders"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "orders" | "products" | "chats" | "contact"
+  >("orders");
   const [chatUnread, setChatUnread] = useState(0);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -353,7 +354,12 @@ export default function AdminPage() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "orders" || tab === "products" || tab === "chats") {
+    if (
+      tab === "orders" ||
+      tab === "products" ||
+      tab === "chats" ||
+      tab === "contact"
+    ) {
       setActiveTab(tab);
     }
   }, [searchParams]);
@@ -462,6 +468,7 @@ export default function AdminPage() {
     try {
       const response = await fetch(`/api/products/${productId}`, {
         method: "DELETE",
+        credentials: "include",
       });
 
       const result = await response.json();
@@ -575,6 +582,16 @@ export default function AdminPage() {
                   {chatUnread > 99 ? "99+" : chatUnread}
                 </span>
               ) : null}
+            </button>
+            <button
+              onClick={() => setActiveTab("contact")}
+              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+                activeTab === "contact"
+                  ? "border-b-2 border-rose text-rose"
+                  : "text-text-light hover:text-text-dark"
+              }`}
+            >
+              Contact forms
             </button>
           </div>
         </div>
@@ -1140,6 +1157,10 @@ export default function AdminPage() {
               onUnread={setChatUnread}
             />
           </div>
+        </div>
+
+        <div className={activeTab === "contact" ? "" : "hidden"}>
+          <AdminContactSubmissionsPanel active={activeTab === "contact"} />
         </div>
 
         {/* Order Products Popup */}
@@ -1910,6 +1931,7 @@ function ProductModal({
 
       const response = await fetch(url, {
         method,
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
