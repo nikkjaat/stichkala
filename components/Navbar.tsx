@@ -138,7 +138,7 @@ export default function Navbar() {
 
   return (
     <nav
-      className={`fixed top-0 left-0 right-0 z-50 bg-opacity-95 backdrop-blur-sm shadow-sm ${
+      className={`fixed top-0 left-0 right-0 z-50 border-t-0 bg-opacity-95 backdrop-blur-sm shadow-sm ${
         isOpen ? "bg-transparent" : "bg-white"
       } transition-colors duration-300`}
       ref={navRef}
@@ -244,7 +244,7 @@ export default function Navbar() {
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3 }}
-                className="lg:hidden border-t border-gray-200 bg-white relative z-50 rounded-lg"
+                className="lg:hidden bg-white relative z-50 rounded-lg"
               >
                 <div className="flex flex-col space-y-1 py-4 border-b border-gray-200 mx-4">
                   {navLinks.map((link, index) => (
