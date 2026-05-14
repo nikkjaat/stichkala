@@ -30,7 +30,7 @@ export default function PaymentPendingPage() {
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = "Payment verification | StichKala";
+    document.title = "Payment verification | StichKalaa";
   }, []);
 
   useEffect(() => {
@@ -331,9 +331,7 @@ export default function PaymentPendingPage() {
 
         <div
           className={`rounded-xl px-3 py-2 text-sm mb-6 ${
-            expired
-              ? "bg-red-50 text-red-800"
-              : "bg-amber-50 text-amber-900"
+            expired ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900"
           }`}
         >
           {expired ? (
@@ -388,18 +386,16 @@ export default function PaymentPendingPage() {
             </div>
             <p className="text-xs text-text-light">
               This does not confirm success automatically — we verify using the
-              UTR and/or screenshot you send. Use <strong>Payment failed</strong>{" "}
-              to send us a screenshot if something went wrong.
+              UTR and/or screenshot you send. Use{" "}
+              <strong>Payment failed</strong> to send us a screenshot if
+              something went wrong.
             </p>
           </div>
         )}
 
         {expired && (
           <div className="mt-6 text-center">
-            <Link
-              href="/"
-              className="text-rose text-sm font-medium underline"
-            >
+            <Link href="/" className="text-rose text-sm font-medium underline">
               Start over from home
             </Link>
           </div>
@@ -428,9 +424,7 @@ export default function PaymentPendingPage() {
                 type="file"
                 accept="image/*"
                 disabled={expired || submitting}
-                onChange={(e) =>
-                  setFile(e.target.files?.[0] ?? null)
-                }
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 className="w-full text-sm text-text-light"
               />
             </div>
@@ -485,9 +479,7 @@ export default function PaymentPendingPage() {
                 type="file"
                 accept="image/*"
                 disabled={expired || submitting}
-                onChange={(e) =>
-                  setFailureFile(e.target.files?.[0] ?? null)
-                }
+                onChange={(e) => setFailureFile(e.target.files?.[0] ?? null)}
                 className="w-full text-sm text-text-light"
               />
             </div>

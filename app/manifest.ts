@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-/** PWA manifest — uses SVGs already in /public so paths always resolve. */
+/** PWA manifest — install / home-screen icons from /public. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "StichKala - Personalised Embroidery & More",
@@ -13,15 +13,21 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#e11d48",
     icons: [
       {
-        src: "/next.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/logo-192.png",
+        sizes: "192x192",
+        type: "image/png",
         purpose: "any",
       },
       {
-        src: "/vercel.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/logo-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/logo-512.png",
+        sizes: "512x512",
+        type: "image/png",
         purpose: "maskable",
       },
     ],

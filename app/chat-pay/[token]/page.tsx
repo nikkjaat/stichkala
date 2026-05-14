@@ -37,14 +37,16 @@ export default function ChatPayPage() {
   });
 
   useEffect(() => {
-    document.title = "Pay offer | StichKala";
+    document.title = "Pay offer | StichKalaa";
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(`/api/chat/pay-session/${encodeURIComponent(token)}`);
+        const r = await fetch(
+          `/api/chat/pay-session/${encodeURIComponent(token)}`
+        );
         const j = await r.json();
         if (cancelled) return;
         if (!j.success) {
@@ -88,7 +90,7 @@ export default function ChatPayPage() {
       const rzp = new window.Razorpay({
         key: session.keyId,
         order_id: session.razorpayOrderId,
-        name: "StichKala",
+        name: "StichKalaa",
         description: session.productName,
         theme: { color: "#fb7185" },
         handler: async (response: {
@@ -207,9 +209,7 @@ export default function ChatPayPage() {
               className="w-full border rounded-xl px-3 py-2"
               placeholder="Full name *"
               value={form.name}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, name: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
             <input
               className="w-full border rounded-xl px-3 py-2"

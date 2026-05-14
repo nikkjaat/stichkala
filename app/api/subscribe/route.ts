@@ -44,7 +44,7 @@ async function sendSubscriberThankYouEmail(
         Hi there,
       </p>
       <p style="color:#475569;font-size:15px;line-height:1.6;">
-        You’re now on the StichKala list. We’ll let you know when we add new handmade pieces to the shop.
+        You’re now on the StichKalaa list. We’ll let you know when we add new handmade pieces to the shop.
       </p>
       <p style="margin:24px 0;">
         <a href="${escapeHtml(shopUrl)}" style="display:inline-block;background:#e11d48;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:600;">Browse products</a>
@@ -58,7 +58,7 @@ async function sendSubscriberThankYouEmail(
   await transporter.sendMail({
     from: emailUser,
     to,
-    subject: "Thank you for subscribing — StichKala",
+    subject: "Thank you for subscribing — StichKalaa",
     html,
   });
 }
@@ -67,7 +67,9 @@ async function sendSubscriberThankYouEmail(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const emailRaw = String(body.email ?? "").trim().toLowerCase();
+    const emailRaw = String(body.email ?? "")
+      .trim()
+      .toLowerCase();
     if (!emailRaw || !EMAIL_RE.test(emailRaw)) {
       return NextResponse.json(
         { success: false, error: "Please enter a valid email address." },
@@ -83,10 +85,7 @@ export async function POST(request: NextRequest) {
     } | null;
 
     if (subscriber) {
-      await ProductSubscriber.updateOne(
-        { email },
-        { $set: { active: true } }
-      );
+      await ProductSubscriber.updateOne({ email }, { $set: { active: true } });
     } else {
       try {
         await ProductSubscriber.create({
@@ -127,13 +126,16 @@ export async function POST(request: NextRequest) {
         "You’re subscribed. Check your inbox for a thank-you message (and we’ll email you when new products go live).",
       pushAvailable: Boolean(
         process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() &&
-          process.env.VAPID_PRIVATE_KEY?.trim()
+        process.env.VAPID_PRIVATE_KEY?.trim()
       ),
     });
   } catch (e) {
     console.error("subscribe POST:", e);
     return NextResponse.json(
-      { success: false, error: "Could not save subscription. Try again later." },
+      {
+        success: false,
+        error: "Could not save subscription. Try again later.",
+      },
       { status: 500 }
     );
   }

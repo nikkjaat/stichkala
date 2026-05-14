@@ -30,7 +30,9 @@ export async function notifySubscribersNewProduct(
 ): Promise<void> {
   try {
     await connectDB();
-    const subs = (await ProductSubscriber.find({ active: true }).lean()) as unknown as Array<{
+    const subs = (await ProductSubscriber.find({
+      active: true,
+    }).lean()) as unknown as Array<{
       _id: unknown;
       email: string;
       unsubscribeToken: string;
@@ -56,7 +58,8 @@ export async function notifySubscribersNewProduct(
       .trim();
     const snippet = escapeHtml(descPlain.slice(0, 480));
     const price =
-      typeof product.basePrice === "number" && Number.isFinite(product.basePrice)
+      typeof product.basePrice === "number" &&
+      Number.isFinite(product.basePrice)
         ? `₹${product.basePrice}`
         : "";
 
@@ -78,7 +81,7 @@ export async function notifySubscribersNewProduct(
           : shopUrl;
         const html = `
         <div style="font-family: Georgia, serif; max-width: 560px; margin: 0 auto;">
-          <h1 style="color:#be123c;font-size:22px;">New piece at StichKala</h1>
+          <h1 style="color:#be123c;font-size:22px;">New piece at StichKalaa</h1>
           <p style="font-size:18px;font-weight:600;color:#1e293b;">${safeName}</p>
           ${
             safeCategory || price
@@ -107,7 +110,7 @@ export async function notifySubscribersNewProduct(
           await transporter.sendMail({
             from: emailUser,
             to,
-            subject: `New at StichKala: ${product.name}`.slice(0, 200),
+            subject: `New at StichKalaa: ${product.name}`.slice(0, 200),
             html,
           });
         } catch (e) {

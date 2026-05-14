@@ -27,12 +27,12 @@ function TrackOrderContent() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    document.title = "Track your Order | StichKala - Handcrafted Gifts";
+    document.title = "Track your Order | StichKalaa - Handcrafted Gifts";
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute(
         "content",
-        "Track your order status with StichKala. Enter your order number or open your email link — your number can be filled in automatically."
+        "Track your order status with StichKalaa. Enter your order number or open your email link — your number can be filled in automatically."
       );
   }, []);
 

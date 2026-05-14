@@ -1,11 +1,13 @@
 # Payment System Documentation
 
 ## Overview
+
 Your payment system has been completed and is now fully functional with UPI payment support. The system supports multiple payment methods including COD, Online (Razorpay), and UPI.
 
 ## Payment Flow
 
 ### 1. Order Creation
+
 - Customer browses products and clicks "Customize & Order"
 - Customer fills in customization details (if product is customizable)
 - Customer provides delivery address and contact information
@@ -17,12 +19,13 @@ Your payment system has been completed and is now fully functional with UPI paym
 ### 2. Payment Methods
 
 #### A. UPI Payment (Current Implementation)
+
 1. Customer reaches payment step
 2. System displays:
    - Order summary with breakdown
    - QR code for UPI payment
    - UPI ID: 9760258097@paytm
-   - Bank details: State Bank of India, StichKala
+   - Bank details: State Bank of India, StichKalaa
 3. Customer clicks "Confirm Order"
 4. Order is created with status "pending" and paymentStatus "pending"
 5. Success modal appears with:
@@ -31,12 +34,15 @@ Your payment system has been completed and is now fully functional with UPI paym
    - Amount to pay
 
 #### B. WhatsApp Order Flow
+
 - Customer can order directly via WhatsApp
 - Pre-filled message includes all order details
 - Opens WhatsApp with your number: +919760258097
 
 ### 3. Payment Confirmation
+
 After customer makes UPI payment:
+
 1. Customer clicks "Send Payment Confirmation" button
 2. Opens WhatsApp with pre-filled message including:
    - Order number
@@ -48,7 +54,9 @@ After customer makes UPI payment:
 ## API Routes
 
 ### POST /api/orders
+
 Creates a new order
+
 ```typescript
 Request Body:
 {
@@ -88,13 +96,17 @@ Response:
 ```
 
 ### GET /api/orders
+
 Fetches all orders (admin use)
 
 ### PUT /api/orders/[id]
+
 Updates order status and details
 
 ### POST /api/payment/confirm
+
 Confirms UPI payment manually
+
 ```typescript
 Request Body:
 {
@@ -112,7 +124,9 @@ Response:
 ```
 
 ### POST /api/payment/verify
+
 Verifies Razorpay payment signature
+
 ```typescript
 Request Body:
 {
@@ -126,6 +140,7 @@ Request Body:
 ## Database Model
 
 ### Order Schema
+
 ```typescript
 {
   orderNumber: string; // Auto-generated: HG000001, HG000002, etc.
@@ -187,11 +202,14 @@ Request Body:
 7. **cancelled** - Order cancelled
 
 ## Notifications
+
 The system sends notifications via:
+
 - WhatsApp (using twilio or direct link)
 - Email (using nodemailer)
 
 Notifications are sent for:
+
 - Order confirmation
 - Status updates
 - Delivery notifications
@@ -199,6 +217,7 @@ Notifications are sent for:
 ## Configuration
 
 ### Environment Variables
+
 ```env
 MONGODB_URI=your_mongodb_connection_string
 NEXT_PUBLIC_WHATSAPP_NUMBER=+919760258097
@@ -217,19 +236,22 @@ NEXT_PUBLIC_SITE_URL=https://vishakhabaliyan.vercel.app
 ```
 
 ### UPI Details
+
 To update UPI payment details, edit `components/CustomizationModal.tsx`:
+
 ```typescript
 const upiDetails = {
   upiId: "9760258097@paytm",
   qrCode: "/qr-code.png",
   bankName: "State Bank of India",
-  accountName: "StichKala",
+  accountName: "StichKalaa",
 };
 ```
 
 ## Testing the Payment Flow
 
 ### 1. Test Order Creation
+
 1. Go to homepage
 2. Click on any product
 3. Click "View Details"
@@ -240,6 +262,7 @@ const upiDetails = {
 8. Verify order is created with correct amount
 
 ### 2. Test UPI Payment
+
 1. Complete order creation
 2. Note the order number
 3. Click "Send Payment Confirmation"
@@ -248,6 +271,7 @@ const upiDetails = {
 6. Send confirmation via WhatsApp
 
 ### 3. Test Admin Confirmation
+
 1. Admin receives WhatsApp message
 2. Admin updates order status in admin panel
 3. Customer receives confirmation notification
@@ -255,6 +279,7 @@ const upiDetails = {
 ## Features
 
 ### Current Features
+
 - Multi-step order form with validation
 - Product customization
 - Multiple payment methods (COD, Online, UPI)
@@ -267,6 +292,7 @@ const upiDetails = {
 - Order history
 
 ### Security Features
+
 - Payment signature verification (Razorpay)
 - Secure payment gateway integration
 - Input validation
@@ -276,16 +302,19 @@ const upiDetails = {
 ## Troubleshooting
 
 ### Order not creating
+
 - Check MongoDB connection
 - Verify all required fields are filled
 - Check browser console for errors
 
 ### Payment confirmation not working
+
 - Verify UPI details are correct
 - Check WhatsApp number in environment variables
 - Test notification system
 
 ### Build errors
+
 - Run `npm run build` to check for errors
 - All warnings are non-critical
 - Main errors have been fixed
@@ -315,6 +344,8 @@ const upiDetails = {
    - Implement fraud detection
 
 ## Support
+
 For any issues or questions:
+
 - WhatsApp: +919760258097
 - Email: stichkalaa@gmail.com

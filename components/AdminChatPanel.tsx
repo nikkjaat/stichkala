@@ -23,8 +23,10 @@ import {
   showChatBrowserNotification,
   ensureChatNotifyServiceWorker,
   shouldMarkChatReadInClient,
+  getChatNotificationsEnabled,
 } from "@/lib/chatPushNotification";
 import ChatNotifToggle from "@/components/ChatNotifToggle";
+import { syncChatAdminPushSubscription } from "@/lib/chatWebPushClient";
 
 type ProductMini = { _id: string; name: string; basePrice: number };
 
@@ -128,6 +130,24 @@ export default function AdminChatPanel({
   }, [selectedId]);
 
   useEffect(() => {
+    if (!active) return;
+    const run = () => {
+      if (typeof window === "undefined" || !("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      if (!getChatNotificationsEnabled()) return;
+      void syncChatAdminPushSubscription();
+    };
+    const t = window.setTimeout(run, 800);
+    window.addEventListener("sk-chat-notif-pref", run);
+    window.addEventListener("sk-permission-change", run);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("sk-chat-notif-pref", run);
+      window.removeEventListener("sk-permission-change", run);
+    };
+  }, [active]);
+
+  useEffect(() => {
     if (!active) {
       setShowAdminNotifNudge(false);
       return;
@@ -179,7 +199,7 @@ export default function AdminChatPanel({
       if (!j.success) return;
       const n = Number(j.unread) || 0;
       const title =
-        typeof j.notifyTitle === "string" ? j.notifyTitle : "StichKala admin";
+        typeof j.notifyTitle === "string" ? j.notifyTitle : "StichKalaa admin";
       const body =
         typeof j.notifyBody === "string"
           ? j.notifyBody
@@ -354,20 +374,19 @@ export default function AdminChatPanel({
     }
   }, [active, selectedId, messages]);
 
-  const openConversation = useCallback((c: ConversationRow) => {
-    if (typeof window !== "undefined" && !selectedId) {
-      window.history.pushState(
-        { adminChat: true },
-        "",
-        window.location.href
-      );
-    }
-    adminBootThreadRef.current = null;
-    adminPrevLastMessageIdRef.current = null;
-    setMessages([]);
-    setSelectedId(c.threadId);
-    setSelectedClientId(c.clientId);
-  }, [selectedId]);
+  const openConversation = useCallback(
+    (c: ConversationRow) => {
+      if (typeof window !== "undefined" && !selectedId) {
+        window.history.pushState({ adminChat: true }, "", window.location.href);
+      }
+      adminBootThreadRef.current = null;
+      adminPrevLastMessageIdRef.current = null;
+      setMessages([]);
+      setSelectedId(c.threadId);
+      setSelectedClientId(c.clientId);
+    },
+    [selectedId]
+  );
 
   const threadFromUrl = searchParams.get("thread")?.trim() ?? "";
   const notifReplyFromUrl = searchParams.get("sk_notif_reply") === "1";
@@ -431,11 +450,14 @@ export default function AdminChatPanel({
     if (!text || !selectedId || sending) return;
     setSending(true);
     try {
-      const r = await chatFetch(`/api/chat/admin/threads/${selectedId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
+      const r = await chatFetch(
+        `/api/chat/admin/threads/${selectedId}/messages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        }
+      );
       const j = await r.json();
       if (j.success && j.message) {
         setDraft("");
@@ -485,17 +507,20 @@ export default function AdminChatPanel({
         alert(uj.error || "Upload failed");
         return;
       }
-      const r = await chatFetch(`/api/chat/admin/threads/${selectedId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          attachment: {
-            url: uj.url,
-            mimeType: String(uj.mimeType ?? ""),
-            fileName: String(uj.fileName ?? pendingAdminAttachment.file.name),
-          },
-        }),
-      });
+      const r = await chatFetch(
+        `/api/chat/admin/threads/${selectedId}/messages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            attachment: {
+              url: uj.url,
+              mimeType: String(uj.mimeType ?? ""),
+              fileName: String(uj.fileName ?? pendingAdminAttachment.file.name),
+            },
+          }),
+        }
+      );
       const j = await r.json();
       if (j.success && j.message) {
         setMessages((prev) => [...prev, j.message]);
@@ -548,7 +573,9 @@ export default function AdminChatPanel({
       const j = await r.json();
       if (j.success && j.message) {
         setMessages((prev) =>
-          prev.map((x) => (x._id === editMessage.id ? (j.message as MessageRow) : x))
+          prev.map((x) =>
+            x._id === editMessage.id ? (j.message as MessageRow) : x
+          )
         );
         setEditMessage(null);
         setAdminMessageMenu(null);
@@ -571,9 +598,7 @@ export default function AdminChatPanel({
     }
     const prod = products.find((p) => p._id === productId);
     if (
-      !confirm(
-        `Send Pay link for ${prod?.name ?? "product"} at ₹${amount}?`
-      )
+      !confirm(`Send Pay link for ${prod?.name ?? "product"} at ₹${amount}?`)
     ) {
       return;
     }
@@ -607,8 +632,7 @@ export default function AdminChatPanel({
   };
 
   const visitorLabel = (c: ConversationRow) =>
-    c.visitorPublicId?.trim() ||
-    `Guest ${c.clientId.slice(0, 6)}…`;
+    c.visitorPublicId?.trim() || `Guest ${c.clientId.slice(0, 6)}…`;
 
   const chatPanel = selectedId ? (
     <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
@@ -629,8 +653,8 @@ export default function AdminChatPanel({
           Under each <strong className="text-text-dark">product link</strong>,
           enter a <strong className="text-text-dark">revised price</strong> and
           send — the customer sees the product name, list vs revised amount, and
-          <strong className="text-text-dark"> Pay now</strong>. Paid orders store
-          both prices on the line item.
+          <strong className="text-text-dark"> Pay now</strong>. Paid orders
+          store both prices on the line item.
         </p>
       </div>
 
@@ -802,7 +826,9 @@ export default function AdminChatPanel({
                     </button>
                   ) : m.kind === "track_order" && m.orderNumber ? (
                     <div>
-                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      <p className="whitespace-pre-wrap break-words">
+                        {m.body}
+                      </p>
                       <p className="text-[10px] mt-1.5 opacity-85">
                         Order {m.orderNumber} — customer taps Track Order (same
                         as menu Track with this number filled in).
@@ -822,31 +848,31 @@ export default function AdminChatPanel({
                         </p>
                       </div>
                     ) : (
-                    <div>
-                      {m.offerProductName && (
-                        <p className="text-xs font-semibold opacity-95">
-                          {m.offerProductName}
-                        </p>
-                      )}
-                      {m.offerListPriceRupees != null &&
-                        m.offerRevisedPriceRupees != null && (
-                          <p className="text-[11px] opacity-90 mt-0.5">
-                            <span className="line-through">
-                              ₹{m.offerListPriceRupees}
-                            </span>
-                            <span className="mx-1">→</span>
-                            <span className="font-semibold">
-                              ₹{m.offerRevisedPriceRupees}
-                            </span>
+                      <div>
+                        {m.offerProductName && (
+                          <p className="text-xs font-semibold opacity-95">
+                            {m.offerProductName}
                           </p>
                         )}
-                      <p className="text-xs opacity-90 mt-1">{m.body}</p>
-                      <p className="text-[10px] mt-1 opacity-80">
-                        Customer taps Pay now in their chat.
-                      </p>
-                    </div>
+                        {m.offerListPriceRupees != null &&
+                          m.offerRevisedPriceRupees != null && (
+                            <p className="text-[11px] opacity-90 mt-0.5">
+                              <span className="line-through">
+                                ₹{m.offerListPriceRupees}
+                              </span>
+                              <span className="mx-1">→</span>
+                              <span className="font-semibold">
+                                ₹{m.offerRevisedPriceRupees}
+                              </span>
+                            </p>
+                          )}
+                        <p className="text-xs opacity-90 mt-1">{m.body}</p>
+                        <p className="text-[10px] mt-1 opacity-80">
+                          Customer taps Pay now in their chat.
+                        </p>
+                      </div>
                     )
-                    ) : (
+                  ) : (
                     <p className="whitespace-pre-wrap break-words">
                       {m.body}
                       {m.editedAt && m.sender === "admin" ? (
@@ -899,9 +925,7 @@ export default function AdminChatPanel({
                     <button
                       type="button"
                       disabled={busyHere}
-                      onClick={() =>
-                        void sendOfferForProduct(linkPid, m._id)
-                      }
+                      onClick={() => void sendOfferForProduct(linkPid, m._id)}
                       className="px-2 py-1 rounded-md bg-rose text-white text-[11px] font-medium disabled:opacity-50"
                     >
                       {busyHere ? "…" : "Send price & Pay link"}
@@ -982,12 +1006,15 @@ export default function AdminChatPanel({
             <button
               type="button"
               className="shrink-0 rounded-full bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-            onClick={() => {
-              void Notification.requestPermission().then((p) => {
-                if (p === "granted") void ensureChatNotifyServiceWorker();
-                window.dispatchEvent(new Event("sk-permission-change"));
-              });
-            }}
+              onClick={() => {
+                void Notification.requestPermission().then((p) => {
+                  if (p === "granted") {
+                    void ensureChatNotifyServiceWorker();
+                    void syncChatAdminPushSubscription();
+                  }
+                  window.dispatchEvent(new Event("sk-permission-change"));
+                });
+              }}
             >
               Allow alerts
             </button>
@@ -1042,9 +1069,7 @@ export default function AdminChatPanel({
                 disabled={sending}
                 onClick={() => void confirmPendingAdminAttachment()}
               >
-                {sending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : null}
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Send
               </button>
             </div>
@@ -1086,7 +1111,9 @@ export default function AdminChatPanel({
           <button
             type="button"
             className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
-            onClick={() => void deleteAdminMessage(adminMessageMenu.message._id)}
+            onClick={() =>
+              void deleteAdminMessage(adminMessageMenu.message._id)
+            }
           >
             <Trash2 className="w-4 h-4" />
             Delete
@@ -1161,54 +1188,54 @@ export default function AdminChatPanel({
                 const unread = c.unreadUserMessages ?? 0;
                 const hasUnread = unread > 0;
                 return (
-                <button
-                  key={c.threadId}
-                  type="button"
-                  onClick={() => openConversation(c)}
-                  className={`w-full text-left px-3 py-2.5 text-sm transition-colors border-l-4 ${
-                    hasUnread
-                      ? "bg-rose/10 hover:bg-rose/[0.14] border-rose"
-                      : "hover:bg-gray-50 border-transparent"
-                  }`}
-                >
-                  <div className="flex justify-between gap-2 items-start">
-                    <span className="font-medium text-text-dark truncate">
-                      {c.subject}
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {hasUnread && (
-                        <span
-                          className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-rose text-white text-[10px] font-bold flex items-center justify-center"
-                          title="Unread from customer"
-                        >
-                          {unread > 99 ? "99+" : unread}
-                        </span>
-                      )}
-                      {c.productEnquiryCount > 0 && (
-                        <span className="text-[10px] font-semibold bg-rose/15 text-rose px-2 py-0.5 rounded-full">
-                          {c.productEnquiryCount} product
-                          {c.productEnquiryCount === 1 ? "" : "s"}
-                        </span>
-                      )}
+                  <button
+                    key={c.threadId}
+                    type="button"
+                    onClick={() => openConversation(c)}
+                    className={`w-full text-left px-3 py-2.5 text-sm transition-colors border-l-4 ${
+                      hasUnread
+                        ? "bg-rose/10 hover:bg-rose/[0.14] border-rose"
+                        : "hover:bg-gray-50 border-transparent"
+                    }`}
+                  >
+                    <div className="flex justify-between gap-2 items-start">
+                      <span className="font-medium text-text-dark truncate">
+                        {c.subject}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {hasUnread && (
+                          <span
+                            className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-rose text-white text-[10px] font-bold flex items-center justify-center"
+                            title="Unread from customer"
+                          >
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        )}
+                        {c.productEnquiryCount > 0 && (
+                          <span className="text-[10px] font-semibold bg-rose/15 text-rose px-2 py-0.5 rounded-full">
+                            {c.productEnquiryCount} product
+                            {c.productEnquiryCount === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  {c.lastMessagePreview ? (
-                    <div className="text-[11px] text-text-light line-clamp-2 mt-1 pr-1">
-                      {c.lastMessagePreview}
+                    {c.lastMessagePreview ? (
+                      <div className="text-[11px] text-text-light line-clamp-2 mt-1 pr-1">
+                        {c.lastMessagePreview}
+                      </div>
+                    ) : null}
+                    <div className="flex justify-between gap-2 items-center mt-1">
+                      <span className="text-[11px] text-rose font-medium truncate min-w-0">
+                        {visitorLabel(c)}
+                      </span>
+                      <span className="text-[10px] text-text-light shrink-0">
+                        {new Date(c.lastMessageAt).toLocaleString("en-IN", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                      </span>
                     </div>
-                  ) : null}
-                  <div className="flex justify-between gap-2 items-center mt-1">
-                    <span className="text-[11px] text-rose font-medium truncate min-w-0">
-                      {visitorLabel(c)}
-                    </span>
-                    <span className="text-[10px] text-text-light shrink-0">
-                      {new Date(c.lastMessageAt).toLocaleString("en-IN", {
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
-                    </span>
-                  </div>
-                </button>
+                  </button>
                 );
               })}
               {conversationsHydrated && conversations.length === 0 ? (

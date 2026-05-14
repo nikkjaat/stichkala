@@ -148,7 +148,7 @@ export default function CustomizationModal({
         payeeName: UPI_PAYEE_NAME,
         amount: formatUpiAmount(totalForUpi),
         currency: "INR",
-        transactionNote: "StichKala",
+        transactionNote: "StichKalaa",
       }),
     [UPI_VPA, UPI_PAYEE_NAME, totalForUpi]
   );
@@ -358,7 +358,8 @@ export default function CustomizationModal({
                   {product.name}
                   {negotiatedCheckout && (
                     <span className="block text-[11px] text-amber-800 mt-0.5 font-normal">
-                      Agreed chat price: ₹{negotiatedCheckout.revisedUnitPriceRupees}
+                      Agreed chat price: ₹
+                      {negotiatedCheckout.revisedUnitPriceRupees}
                       /unit
                       {negotiatedCheckout.listPriceRupees != null
                         ? ` (list ₹${negotiatedCheckout.listPriceRupees})`
@@ -914,13 +915,13 @@ export default function CustomizationModal({
                     </h5>
                     <div className="space-y-1 text-xs text-text-light">
                       <p>
-                        • Tap <strong>PAY NOW</strong> above — UPI opens in a new
-                        tab; you&apos;ll go straight to the payment confirmation
-                        page.
+                        • Tap <strong>PAY NOW</strong> above — UPI opens in a
+                        new tab; you&apos;ll go straight to the payment
+                        confirmation page.
                       </p>
                       <p>
-                        • Enter <strong>UTR and/or a screenshot</strong> (at least
-                        one) within 10 minutes.
+                        • Enter <strong>UTR and/or a screenshot</strong> (at
+                        least one) within 10 minutes.
                       </p>
                     </div>
                   </div>

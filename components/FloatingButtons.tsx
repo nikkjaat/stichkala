@@ -13,7 +13,9 @@ import {
   shouldNotifyAdminChat,
   showChatBrowserNotification,
   requestChatNotificationsFromUserGesture,
+  getChatNotificationsEnabled,
 } from "@/lib/chatPushNotification";
+import { syncChatAdminPushSubscription } from "@/lib/chatWebPushClient";
 
 export default function FloatingButtons() {
   const pathname = usePathname();
@@ -41,6 +43,14 @@ export default function FloatingButtons() {
   useEffect(() => {
     void refreshAdminSession();
   }, [pathname, refreshAdminSession]);
+
+  useEffect(() => {
+    if (!adminAuthenticated) return;
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    if (!getChatNotificationsEnabled()) return;
+    void syncChatAdminPushSubscription();
+  }, [adminAuthenticated, pathname]);
 
   useEffect(() => {
     const onFocus = () => void refreshAdminSession();
@@ -71,7 +81,9 @@ export default function FloatingButtons() {
         if (cancelled || !j.success || typeof j.unread !== "number") return;
         const n = j.unread;
         const title =
-          typeof j.notifyTitle === "string" ? j.notifyTitle : "StichKala admin";
+          typeof j.notifyTitle === "string"
+            ? j.notifyTitle
+            : "StichKalaa admin";
         const body =
           typeof j.notifyBody === "string"
             ? j.notifyBody
@@ -171,8 +183,8 @@ export default function FloatingButtons() {
               })();
             }}
             className="relative w-12 h-12 bg-rose text-white rounded-full shadow-lg hover:bg-rose-dark transition-all flex items-center justify-center touch-manipulation"
-            title="Chat with StichKala (shop chat)"
-            aria-label="Chat with StichKala about orders or payments"
+            title="Chat with StichKalaa (shop chat)"
+            aria-label="Chat with StichKalaa about orders or payments"
           >
             <FaComments className="text-xl" />
             {(chat?.unreadTotal ?? 0) > 0 ? (
@@ -199,7 +211,7 @@ export default function FloatingButtons() {
           duration: 0.25,
           delay: adminAuthenticated ? 0.08 : 0.05,
         }}
-        aria-label="Open StichKala on Instagram"
+        aria-label="Open StichKalaa on Instagram"
       >
         <FaInstagram className="text-xl" />
       </motion.button>

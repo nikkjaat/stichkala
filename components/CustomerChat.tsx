@@ -31,11 +31,13 @@ import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import {
   ensureChatNotifyServiceWorker,
   formatChatMessageNotificationBody,
+  getChatNotificationsEnabled,
   shouldMarkChatReadInClient,
   shouldNotifyVisitorChat,
   showChatBrowserNotification,
 } from "@/lib/chatPushNotification";
 import ChatNotifToggle from "@/components/ChatNotifToggle";
+import { syncChatVisitorPushSubscription } from "@/lib/chatWebPushClient";
 
 export type ChatProductRef = { _id: string; name: string };
 
@@ -201,9 +203,8 @@ export function CustomerChatProvider({
   const [productModalHidePay, setProductModalHidePay] = useState(false);
   const [negotiatedPaySource, setNegotiatedPaySource] =
     useState<ChatMessageRow | null>(null);
-  const [checkoutProduct, setCheckoutProduct] = useState<CheckoutProduct | null>(
-    null
-  );
+  const [checkoutProduct, setCheckoutProduct] =
+    useState<CheckoutProduct | null>(null);
   const [negotiatedCheckoutOpts, setNegotiatedCheckoutOpts] = useState<{
     payToken: string;
     threadId: string;
@@ -251,6 +252,24 @@ export function CustomerChatProvider({
   }, [clientId]);
 
   useEffect(() => {
+    if (!clientId) return;
+    const run = () => {
+      if (typeof window === "undefined" || !("Notification" in window)) return;
+      if (Notification.permission !== "granted") return;
+      if (!getChatNotificationsEnabled()) return;
+      void syncChatVisitorPushSubscription(clientId);
+    };
+    const t = window.setTimeout(run, 800);
+    window.addEventListener("sk-chat-notif-pref", run);
+    window.addEventListener("sk-permission-change", run);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("sk-chat-notif-pref", run);
+      window.removeEventListener("sk-permission-change", run);
+    };
+  }, [clientId]);
+
+  useEffect(() => {
     if (!panelOpen) return;
     if (typeof window === "undefined" || !("Notification" in window)) {
       setNotifPerm("unsupported");
@@ -294,7 +313,10 @@ export function CustomerChatProvider({
       };
       if (!j.success) return;
       const n = Number(j.unread) || 0;
-      if (typeof j.notifyTitle === "string" && typeof j.notifyBody === "string") {
+      if (
+        typeof j.notifyTitle === "string" &&
+        typeof j.notifyBody === "string"
+      ) {
         unreadPollMetaRef.current = {
           title: j.notifyTitle,
           body: j.notifyBody,
@@ -375,7 +397,7 @@ export function CustomerChatProvider({
     ) {
       const meta = unreadPollMetaRef.current;
       showChatBrowserNotification({
-        title: meta?.title ?? "StichKala",
+        title: meta?.title ?? "StichKalaa",
         body: meta?.body ?? "New message from the shop.",
         tag: `sk-visitor-unread-${unreadTotal}`,
         openVisitorThreadId: meta?.threadId,
@@ -422,7 +444,7 @@ export function CustomerChatProvider({
     const chatName =
       threads.find((t) => t._id === activeThreadId)?.productName ?? "Chat";
     showChatBrowserNotification({
-      title: `StichKala · ${chatName}`,
+      title: `StichKalaa · ${chatName}`,
       body: formatChatMessageNotificationBody(last),
       tag: `sk-visitor-msg-${last._id}`,
       openVisitorThreadId: activeThreadId ?? undefined,
@@ -494,7 +516,10 @@ export function CustomerChatProvider({
     };
     window.addEventListener("sk-open-visitor-chat", onOpen as EventListener);
     return () =>
-      window.removeEventListener("sk-open-visitor-chat", onOpen as EventListener);
+      window.removeEventListener(
+        "sk-open-visitor-chat",
+        onOpen as EventListener
+      );
   }, [clientId, openPanelWithThread]);
 
   useEffect(() => {
@@ -526,7 +551,14 @@ export function CustomerChatProvider({
     window.addEventListener("sk-notification-chat-sent", onChatSent);
     return () =>
       window.removeEventListener("sk-notification-chat-sent", onChatSent);
-  }, [refreshUnread, loadThreads, clientId, panelOpen, activeThreadId, loadMessages]);
+  }, [
+    refreshUnread,
+    loadThreads,
+    clientId,
+    panelOpen,
+    activeThreadId,
+    loadMessages,
+  ]);
 
   const openGeneralChat = useCallback(async () => {
     if (!clientId) return;
@@ -626,11 +658,14 @@ export function CustomerChatProvider({
     if (!text || !activeThreadId || !clientId || sending) return;
     setSending(true);
     try {
-      const r = await chatFetch(`/api/chat/threads/${activeThreadId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId, text }),
-      });
+      const r = await chatFetch(
+        `/api/chat/threads/${activeThreadId}/messages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId, text }),
+        }
+      );
       const j = await r.json();
       if (j.success && j.message) {
         setDraft("");
@@ -644,19 +679,18 @@ export function CustomerChatProvider({
   }, [draft, activeThreadId, clientId, sending]);
 
   const sendAttachmentMessage = useCallback(
-    async (payload: {
-      url: string;
-      mimeType: string;
-      fileName: string;
-    }) => {
+    async (payload: { url: string; mimeType: string; fileName: string }) => {
       if (!activeThreadId || !clientId || sending) return;
       setSending(true);
       try {
-        const r = await chatFetch(`/api/chat/threads/${activeThreadId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId, attachment: payload }),
-        });
+        const r = await chatFetch(
+          `/api/chat/threads/${activeThreadId}/messages`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId, attachment: payload }),
+          }
+        );
         const j = await r.json();
         if (j.success && j.message) {
           setMessages((prev) => [...prev, j.message]);
@@ -793,8 +827,7 @@ export function CustomerChatProvider({
   );
 
   const visitorHandle = useMemo(() => {
-    const t =
-      threads.find((x) => x._id === activeThreadId) || threads[0];
+    const t = threads.find((x) => x._id === activeThreadId) || threads[0];
     return t?.visitorPublicId?.trim() || null;
   }, [threads, activeThreadId]);
 
@@ -834,6 +867,7 @@ export function CustomerChatProvider({
     window.dispatchEvent(new Event("sk-permission-change"));
     if (permission === "granted") {
       void ensureChatNotifyServiceWorker();
+      void syncChatVisitorPushSubscription(clientId);
     }
   };
 
@@ -1003,9 +1037,7 @@ export function CustomerChatProvider({
             {panelOpen && (
               <motion.div
                 className={`fixed inset-0 z-[100] flex bg-cream pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${
-                  singleThreadLayout
-                    ? "flex-col"
-                    : "flex-col sm:flex-row"
+                  singleThreadLayout ? "flex-col" : "flex-col sm:flex-row"
                 }`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -1027,9 +1059,9 @@ export function CustomerChatProvider({
                         </p>
                       )}
                       <p className="text-[10px] text-text-light leading-snug">
-                        Chats are stored on our server. Use this site on the same
-                        device/browser to continue. Closing the tab does not
-                        delete your history.
+                        Chats are stored on our server. Use this site on the
+                        same device/browser to continue. Closing the tab does
+                        not delete your history.
                       </p>
                     </div>
                     <div className="flex-1 overflow-y-auto divide-y min-h-0">
@@ -1063,7 +1095,7 @@ export function CustomerChatProvider({
                   <div className="flex items-center gap-2.5 px-3 pt-[max(1.125rem,env(safe-area-inset-top))] pb-4 border-b border-gray-100 bg-gradient-soft shrink-0">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-text-dark truncate">
-                        StichKala
+                        StichKalaa
                       </p>
                       <p className="text-[11px] text-text-light truncate">
                         {singleThreadLayout ? (
@@ -1299,75 +1331,79 @@ export function CustomerChatProvider({
                                   </p>
                                 </div>
                               ) : (
-                              <div className="space-y-2">
-                                {m.offerProductName && (
-                                  <p
-                                    className={
-                                      m.sender === "user"
-                                        ? "text-xs font-semibold text-white"
-                                        : "text-xs font-semibold text-text-dark"
-                                    }
-                                  >
-                                    {m.offerProductName}
-                                  </p>
-                                )}
-                                {m.offerListPriceRupees != null &&
-                                  m.offerRevisedPriceRupees != null && (
+                                <div className="space-y-2">
+                                  {m.offerProductName && (
                                     <p
                                       className={
                                         m.sender === "user"
-                                          ? "text-xs text-white/90"
-                                          : "text-xs text-text-light"
+                                          ? "text-xs font-semibold text-white"
+                                          : "text-xs font-semibold text-text-dark"
                                       }
                                     >
-                                      <span className="line-through opacity-80">
-                                        ₹{m.offerListPriceRupees}
-                                      </span>
-                                      <span className="mx-1">→</span>
-                                      <span className="font-semibold">
-                                        ₹{m.offerRevisedPriceRupees}
-                                      </span>
+                                      {m.offerProductName}
                                     </p>
                                   )}
-                                <p
-                                  className={
-                                    m.sender === "user"
-                                      ? "text-xs opacity-90"
-                                      : "text-xs text-text-light"
-                                  }
-                                >
-                                  {m.body}
-                                </p>
-                                {m.offerProductId &&
-                                m.offerRevisedPriceRupees != null ? (
-                                  <div className="flex flex-col gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => openPaymentProductView(m)}
-                                      className={
-                                        m.sender === "user"
-                                          ? "w-full text-center py-2 rounded-xl border border-white/50 text-white text-sm font-medium hover:bg-white/10"
-                                          : "w-full text-center py-2 rounded-xl border border-rose/40 text-rose text-sm font-medium hover:bg-rose/10"
-                                      }
-                                    >
-                                      View product
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void startNegotiatedCheckout(m)}
-                                      className="w-full text-center py-2 rounded-xl bg-rose text-white font-medium text-sm hover:opacity-95"
-                                    >
-                                      Pay — customise &amp; UPI
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <p className="text-[11px] opacity-80">
-                                    Ask the shop to resend a price link (this one
-                                    is missing product details).
+                                  {m.offerListPriceRupees != null &&
+                                    m.offerRevisedPriceRupees != null && (
+                                      <p
+                                        className={
+                                          m.sender === "user"
+                                            ? "text-xs text-white/90"
+                                            : "text-xs text-text-light"
+                                        }
+                                      >
+                                        <span className="line-through opacity-80">
+                                          ₹{m.offerListPriceRupees}
+                                        </span>
+                                        <span className="mx-1">→</span>
+                                        <span className="font-semibold">
+                                          ₹{m.offerRevisedPriceRupees}
+                                        </span>
+                                      </p>
+                                    )}
+                                  <p
+                                    className={
+                                      m.sender === "user"
+                                        ? "text-xs opacity-90"
+                                        : "text-xs text-text-light"
+                                    }
+                                  >
+                                    {m.body}
                                   </p>
-                                )}
-                              </div>
-                            )
+                                  {m.offerProductId &&
+                                  m.offerRevisedPriceRupees != null ? (
+                                    <div className="flex flex-col gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openPaymentProductView(m)
+                                        }
+                                        className={
+                                          m.sender === "user"
+                                            ? "w-full text-center py-2 rounded-xl border border-white/50 text-white text-sm font-medium hover:bg-white/10"
+                                            : "w-full text-center py-2 rounded-xl border border-rose/40 text-rose text-sm font-medium hover:bg-rose/10"
+                                        }
+                                      >
+                                        View product
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void startNegotiatedCheckout(m)
+                                        }
+                                        className="w-full text-center py-2 rounded-xl bg-rose text-white font-medium text-sm hover:opacity-95"
+                                      >
+                                        Pay — customise &amp; UPI
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <p className="text-[11px] opacity-80">
+                                      Ask the shop to resend a price link (this
+                                      one is missing product details).
+                                    </p>
+                                  )}
+                                </div>
+                              )
                             ) : (
                               <p className="whitespace-pre-wrap break-words">
                                 {m.body}

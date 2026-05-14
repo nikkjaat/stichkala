@@ -6,6 +6,10 @@ import mongoose from "mongoose";
 import { buildProductPublicUrl } from "@/lib/chatProductUrl";
 import { syncVisitorPublicIdForClient } from "@/lib/chatVisitorSync";
 import { resolvePrimaryThread } from "@/lib/chatPrimaryThread";
+import {
+  fireWebPushAfterAdminMessage,
+  fireWebPushAfterVisitorMessage,
+} from "@/lib/sendChatWebPush";
 
 export const dynamic = "force-dynamic";
 
@@ -107,12 +111,13 @@ export async function POST(request: NextRequest) {
 
     if (sendProductLink && productId && isOid(productId)) {
       const url = buildProductPublicUrl(productId);
-      await ChatMessage.create({
+      const plMsg = await ChatMessage.create({
         threadId: thread._id,
         sender: "user",
         kind: "product_link",
         body: url,
       });
+      fireWebPushAfterVisitorMessage(String(thread._id), plMsg.toObject());
       thread.lastMessageAt = new Date();
       thread.lastEnquiredProductId = new mongoose.Types.ObjectId(productId);
       thread.lastEnquiredProductName =
@@ -128,13 +133,18 @@ export async function POST(request: NextRequest) {
     /** First-ever activity on this thread: send one admin welcome (not repeated on later opens). */
     if (messageCountBefore === 0) {
       const welcome =
-        "Welcome to StichKala! Ask us about products, sizes, delivery, or custom work — we reply here as soon as we can.";
-      await ChatMessage.create({
+        "Welcome to StichKalaa! Ask us about products, sizes, delivery, or custom work — we reply here as soon as we can.";
+      const welcomeMsg = await ChatMessage.create({
         threadId: thread._id,
         sender: "admin",
         kind: "text",
         body: welcome,
       });
+      fireWebPushAfterAdminMessage(
+        String(thread._id),
+        clientId,
+        welcomeMsg.toObject()
+      );
       thread.lastMessageAt = new Date();
       await thread.save();
     }

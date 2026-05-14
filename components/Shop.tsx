@@ -58,8 +58,7 @@ const SHOP_SAMPLE_PRODUCTS: Product[] = [
     _id: "3",
     name: "Watercolor Hanky Set",
     category: "hanky",
-    description:
-      "Set of 3 hand-painted cotton hankies with watercolor designs",
+    description: "Set of 3 hand-painted cotton hankies with watercolor designs",
     basePrice: 699,
     images: [
       "https://images.pexels.com/photos/6195125/pexels-photo-6195125.jpeg",
@@ -98,12 +97,7 @@ const SHOP_SAMPLE_PRODUCTS: Product[] = [
     ],
     customizable: true,
     options: {
-      colors: [
-        "Pastel Mix",
-        "Bright Colors",
-        "Neutral Tones",
-        "Floral Prints",
-      ],
+      colors: ["Pastel Mix", "Bright Colors", "Neutral Tones", "Floral Prints"],
       sizes: ["Small", "Medium", "Large"],
       materials: ["Cotton", "Satin", "Velvet"],
     },
@@ -142,7 +136,7 @@ export default function Shop() {
   >([{ id: "all", name: "All Products", emoji: "✨" }]);
 
   useEffect(() => {
-    document.title = "StichKala - Handcrafted Gifts";
+    document.title = "StichKalaa - Handcrafted Gifts";
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute(

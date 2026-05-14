@@ -1,26 +1,83 @@
 /* global self, clients */
 self.addEventListener("push", function (event) {
-  let data = { title: "StichKala", body: "New update", url: "/" };
+  var payload = { title: "StichKalaa", body: "New update", url: "/" };
   try {
     if (event.data) {
-      const parsed = event.data.json();
+      var parsed = event.data.json();
       if (parsed && typeof parsed === "object") {
-        data = { ...data, ...parsed };
+        for (var key in parsed) {
+          if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+            payload[key] = parsed[key];
+          }
+        }
       }
     }
   } catch (e) {
     /* use defaults */
   }
-  const title = data.title || "StichKala";
-  const url = typeof data.url === "string" ? data.url : "/";
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || "",
-      icon: "/favicon.ico",
-      badge: "/favicon.ico",
-      data: { url },
-    })
-  );
+  var title = String(payload.title || "StichKalaa").slice(0, 80);
+  var bodyStr = String(payload.body || "").slice(0, 240);
+  var clickUrl =
+    typeof payload.url === "string" && payload.url.length
+      ? payload.url
+      : self.location.origin + "/";
+  var tid =
+    typeof payload.readThreadId === "string" ? payload.readThreadId.trim() : "";
+  var cid =
+    typeof payload.readClientId === "string" ? payload.readClientId.trim() : "";
+  var isAdm = payload.readAsAdmin === "1" || payload.readAsAdmin === 1;
+  var withActions = Boolean(tid && (isAdm || cid));
+  var dataObj = { url: clickUrl };
+  if (withActions) {
+    dataObj.readThreadId = tid;
+    dataObj.readClientId = cid;
+    dataObj.readAsAdmin = isAdm ? "1" : "0";
+    dataObj.replyUrl =
+      typeof payload.replyUrl === "string" && payload.replyUrl.length
+        ? payload.replyUrl
+        : clickUrl;
+  }
+  var dataStr = JSON.stringify(dataObj);
+  var baseBody = bodyStr || "New update";
+  var p;
+  if (withActions) {
+    p = self.registration
+      .showNotification(title, {
+        body: baseBody,
+        icon: "/logo-192.png",
+        badge: "/logo-192.png",
+        data: dataStr,
+        actions: [
+          {
+            action: "reply",
+            title: "Reply",
+            type: "text",
+            placeholder: "Write a message…",
+          },
+          { action: "read", title: "Read" },
+        ],
+      })
+      .catch(function () {
+        return self.registration.showNotification(title, {
+          body: baseBody,
+          icon: "/logo-192.png",
+          badge: "/logo-192.png",
+          data: dataStr,
+          actions: [
+            { action: "reply", title: "Reply" },
+            { action: "read", title: "Read" },
+          ],
+        });
+      });
+  } else {
+    p = self.registration.showNotification(title, {
+      body: baseBody,
+      icon: "/logo-192.png",
+      badge: "/logo-192.png",
+      data: dataStr,
+    });
+  }
+  event.waitUntil(p);
 });
 
 function parseNotificationData(raw) {
@@ -139,9 +196,11 @@ function notifyAllClients(payload) {
 }
 
 function sendNotifChatMessage(data, text) {
-  var tid = typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
+  var tid =
+    typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
   var isAdmin = data.readAsAdmin === "1";
-  var cid = typeof data.readClientId === "string" ? data.readClientId.trim() : "";
+  var cid =
+    typeof data.readClientId === "string" ? data.readClientId.trim() : "";
   if (!tid || !text) return Promise.resolve();
   var origin = self.location.origin;
   var url;
@@ -155,8 +214,7 @@ function sendNotifChatMessage(data, text) {
     body = JSON.stringify({ text: text });
   } else {
     if (!cid) return Promise.resolve();
-    url =
-      origin + "/api/chat/threads/" + encodeURIComponent(tid) + "/messages";
+    url = origin + "/api/chat/threads/" + encodeURIComponent(tid) + "/messages";
     body = JSON.stringify({ clientId: cid, text: text });
   }
   return fetch(url, {
@@ -174,16 +232,15 @@ function sendNotifChatMessage(data, text) {
       });
     })
     .then(function (json) {
-      if (!json || !json.success) return Promise.reject(new Error("send rejected"));
+      if (!json || !json.success)
+        return Promise.reject(new Error("send rejected"));
       return notifyAllClients({
         type: "sk-notification-chat-sent",
         threadId: tid,
       });
     })
     .catch(function () {
-      return postNavigateToClients(
-        resolveTargetUrl(data.replyUrl || data.url)
-      );
+      return postNavigateToClients(resolveTargetUrl(data.replyUrl || data.url));
     });
 }
 
@@ -230,7 +287,9 @@ self.addEventListener("notificationclick", function (event) {
   event.waitUntil(
     normalizeReplyText(event)
       .then(function (raw) {
-        var text = String(raw || "").trim().slice(0, 4000);
+        var text = String(raw || "")
+          .trim()
+          .slice(0, 4000);
         var tid =
           typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
         if (text && tid) {
@@ -253,7 +312,9 @@ self.addEventListener("notificationclick", function (event) {
           notification.close();
         } catch (e4) {}
         return postNavigateToClients(
-          resolveTargetUrl(action === "reply" ? data.replyUrl || data.url : data.url)
+          resolveTargetUrl(
+            action === "reply" ? data.replyUrl || data.url : data.url
+          )
         );
       })
   );

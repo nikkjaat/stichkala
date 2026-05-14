@@ -49,7 +49,7 @@ export const sendOrderConfirmation = async (order: any, _status: string) => {
     order.paymentStatus === "pending" &&
     Boolean(
       order.paymentDetails?.upi_transaction_id ||
-        order.paymentDetails?.payment_screenshot
+      order.paymentDetails?.payment_screenshot
     );
 
   const heading = awaitingUpiVerify
@@ -203,8 +203,7 @@ export const sendAdminNewOrderAlert = async (order: any) => {
   const itemsHtml = order.items
     .map((item: any) => {
       const priceLine =
-        item.originalListPrice != null &&
-        item.originalListPrice !== item.price
+        item.originalListPrice != null && item.originalListPrice !== item.price
           ? ` — <small>list ₹${item.originalListPrice}, paid ₹${item.price}</small>`
           : ` — ₹${item.price}`;
       return `<li>${item.productName} × ${item.quantity}${priceLine}${
@@ -297,16 +296,12 @@ export const sendPaymentConfirmedEmail = async (order: any) => {
           </a>
         </div>
         <p style="font-size: 13px; color: #888;">Link: <a href="${trackUrl}">${trackUrl}</a></p>
-        <p>With love,<br>StichKala</p>
+        <p>With love,<br>StichKalaa</p>
       </div>
     </div>
   `;
 
-  await sendEmail(
-    email,
-    `Payment confirmed — Order ${orderNumber}`,
-    html
-  );
+  await sendEmail(email, `Payment confirmed — Order ${orderNumber}`, html);
 };
 
 /** After admin cannot verify payment — explain next steps with same track link. */
@@ -337,14 +332,10 @@ export const sendPaymentNotVerifiedEmail = async (order: any) => {
           </a>
         </div>
         <p style="font-size: 13px; color: #888;">Link: <a href="${trackUrl}">${trackUrl}</a></p>
-        <p>StichKala</p>
+        <p>StichKalaa</p>
       </div>
     </div>
   `;
 
-  await sendEmail(
-    email,
-    `Payment not verified — Order ${orderNumber}`,
-    html
-  );
+  await sendEmail(email, `Payment not verified — Order ${orderNumber}`, html);
 };

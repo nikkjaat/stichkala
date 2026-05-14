@@ -157,7 +157,7 @@ export default function About() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-serif text-lg sm:text-xl text-text-dark mb-2 group-hover:text-lavender transition-colors duration-300">
-                    StichKala Quality
+                    StichKalaa Quality
                   </h3>
                   <p className="text-text-light text-sm sm:text-base leading-relaxed">
                     Meticulously crafted using premium, sustainable materials

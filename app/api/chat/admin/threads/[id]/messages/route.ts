@@ -11,6 +11,7 @@ import {
   ADMIN_SESSION_COOKIE,
   verifySessionCookieValue,
 } from "@/lib/adminSession";
+import { fireWebPushAfterAdminMessage } from "@/lib/sendChatWebPush";
 
 export const dynamic = "force-dynamic";
 
@@ -150,6 +151,9 @@ export async function POST(
     }
     thread.lastMessageAt = new Date();
     await thread.save();
+
+    fireWebPushAfterAdminMessage(threadId, thread.clientId, msg.toObject());
+
     return NextResponse.json({
       success: true,
       message: serializeChatMessage(

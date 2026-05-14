@@ -74,7 +74,7 @@ export default function Footer() {
       <div className="container mx-auto max-w-6xl">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           <div>
-            <h3 className="font-serif text-2xl mb-4 text-rose">StichKala</h3>
+            <h3 className="font-serif text-2xl mb-4 text-rose">StichKalaa</h3>
             <p className="text-gray-300 text-sm leading-relaxed">
               Creating beautiful, personalised pieces with love and care. Each
               item is a unique work of art made just for you.
@@ -119,8 +119,8 @@ export default function Footer() {
           <div>
             <h4 className="font-serif text-lg mb-4">New products</h4>
             <p className="text-gray-300 text-sm mb-4">
-              Subscribe with your email to hear when we add new pieces. Optionally
-              turn on browser alerts for instant notifications.
+              Subscribe with your email to hear when we add new pieces.
+              Optionally turn on browser alerts for instant notifications.
             </p>
             <form onSubmit={handleSubscribe} className="flex flex-col gap-2">
               <div className="flex gap-2 flex-col sm:flex-row">
@@ -171,7 +171,7 @@ export default function Footer() {
 
         <div className="border-t border-white border-opacity-10 pt-8 text-center text-sm text-gray-400">
           <p>
-            &copy; {new Date().getFullYear()} StichKala. Handmade with ❤️ in
+            &copy; {new Date().getFullYear()} StichKalaa. Handmade with ❤️ in
             India
           </p>
         </div>

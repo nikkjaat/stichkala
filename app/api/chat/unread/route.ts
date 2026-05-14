@@ -51,10 +51,12 @@ export async function GET(request: NextRequest) {
           (th as { lastEnquiredProductName?: string } | null)
             ?.lastEnquiredProductName ||
           (th as { productName?: string } | null)?.productName ||
-          "StichKala";
-        notifyTitle = `StichKala · ${chatName}`;
+          "StichKalaa";
+        notifyTitle = `StichKalaa · ${chatName}`;
         notifyBody = formatChatMessageNotificationBody(
-          latestUnread as Parameters<typeof formatChatMessageNotificationBody>[0]
+          latestUnread as Parameters<
+            typeof formatChatMessageNotificationBody
+          >[0]
         );
       }
     }

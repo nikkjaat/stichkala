@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
 
     const nameStr = String(name).trim().slice(0, 200);
     const emailStr = String(email).trim().slice(0, 320);
-    const subjectStr = String(subject ?? "").trim().slice(0, 400);
+    const subjectStr = String(subject ?? "")
+      .trim()
+      .slice(0, 400);
     const messageStr = String(message).trim().slice(0, 20000);
 
     await connectDB();
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest) {
             </div>
             <p style="margin-top: 20px;">
               Best regards,<br>
-              StichKala
+              StichKalaa
             </p>
           </div>
         </div>

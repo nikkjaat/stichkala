@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
+import { fireWebPushAfterAdminMessage } from "@/lib/sendChatWebPush";
 import {
   ADMIN_SESSION_COOKIE,
   verifySessionCookieValue,
@@ -138,6 +139,8 @@ export async function POST(
       offerRevisedPriceRupees: revisedRounded,
       offerProductId: new mongoose.Types.ObjectId(productId),
     });
+
+    fireWebPushAfterAdminMessage(threadId, thread.clientId, msg.toObject());
 
     await ChatMessage.updateMany(
       {

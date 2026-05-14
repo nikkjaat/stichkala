@@ -118,7 +118,7 @@ export async function ensureChatNotifyServiceWorker(): Promise<boolean> {
 
 function notifyIconUrl(): string | undefined {
   try {
-    return new URL("/next.svg", window.location.origin).href;
+    return new URL("/logo-192.png", window.location.origin).href;
   } catch {
     return undefined;
   }
@@ -305,8 +305,8 @@ async function showBrowserChatNotificationAsync(
     const common: globalThis.NotificationOptions = {
       body: body || "New message",
       tag,
-      icon: icon ?? "/next.svg",
-      badge: icon ?? "/next.svg",
+      icon: icon ?? "/logo-192.png",
+      badge: icon ?? "/logo-192.png",
       silent: false,
       requireInteraction: false,
       renotify: true,
@@ -366,10 +366,14 @@ export function requestChatNotificationsFromUserGesture(): void {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission === "granted") {
     void ensureChatNotifyServiceWorker();
+    window.dispatchEvent(new Event("sk-permission-change"));
     return;
   }
   if (Notification.permission !== "default") return;
   void Notification.requestPermission().then((p) => {
-    if (p === "granted") void ensureChatNotifyServiceWorker();
+    if (p === "granted") {
+      void ensureChatNotifyServiceWorker();
+      window.dispatchEvent(new Event("sk-permission-change"));
+    }
   });
 }

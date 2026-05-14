@@ -3,6 +3,7 @@
 ## Quick Test Checklist
 
 ### 1. Frontend Order Flow
+
 - [ ] Visit homepage at `http://localhost:3000`
 - [ ] Click on any featured product
 - [ ] Click "View Details" to see product modal
@@ -30,6 +31,7 @@
 ### 2. Backend API Tests
 
 #### Test Order Creation API
+
 ```bash
 curl -X POST http://localhost:3000/api/orders \
   -H "Content-Type: application/json" \
@@ -62,11 +64,13 @@ curl -X POST http://localhost:3000/api/orders \
 ```
 
 #### Test Get Orders API
+
 ```bash
 curl http://localhost:3000/api/orders
 ```
 
 #### Test Payment Confirmation API
+
 ```bash
 curl -X POST http://localhost:3000/api/payment/confirm \
   -H "Content-Type: application/json" \
@@ -80,6 +84,7 @@ curl -X POST http://localhost:3000/api/payment/confirm \
 ### 3. Database Verification
 
 #### Check Orders in MongoDB
+
 ```bash
 # Connect to MongoDB
 mongosh "YOUR_MONGODB_URI"
@@ -100,17 +105,19 @@ db.orders.find({ paymentStatus: "pending" })
 ### 4. Payment Flow Testing
 
 #### UPI Payment Test
+
 1. Create an order through the website
 2. Note the order number and total amount
 3. Test UPI payment using:
    - UPI ID: 9760258097@paytm
    - Bank: State Bank of India
-   - Account Name: StichKala
+   - Account Name: StichKalaa
 4. After payment, click "Send Payment Confirmation"
 5. Send transaction ID via WhatsApp: +919760258097
 6. Admin confirms payment manually
 
 #### WhatsApp Order Test
+
 1. Click "WhatsApp" button in payment step
 2. Verify WhatsApp opens with pre-filled message
 3. Message should include:
@@ -121,6 +128,7 @@ db.orders.find({ paymentStatus: "pending" })
    - Complete address
 
 ### 5. Order Tracking Test
+
 - [ ] Visit `/track` page
 - [ ] Enter your order number (e.g., HG000001)
 - [ ] Click "Track Order"
@@ -128,6 +136,7 @@ db.orders.find({ paymentStatus: "pending" })
 - [ ] Check order status and estimated delivery
 
 ### 6. Admin Panel Test
+
 - [ ] Visit `/secure/admin/vishakha`
 - [ ] View all orders
 - [ ] Update order status
@@ -136,6 +145,7 @@ db.orders.find({ paymentStatus: "pending" })
 - [ ] Update product details
 
 ### 7. Mobile Responsive Test
+
 - [ ] Test on mobile device or browser dev tools
 - [ ] Check all steps are responsive
 - [ ] Verify modals work on mobile
@@ -143,6 +153,7 @@ db.orders.find({ paymentStatus: "pending" })
 - [ ] Check QR code visibility
 
 ### 8. Error Handling Test
+
 - [ ] Try submitting empty form
 - [ ] Try creating order without required fields
 - [ ] Test invalid phone numbers
@@ -153,6 +164,7 @@ db.orders.find({ paymentStatus: "pending" })
 ## Expected Results
 
 ### Order Creation Success
+
 ```json
 {
   "success": true,
@@ -173,6 +185,7 @@ db.orders.find({ paymentStatus: "pending" })
 ```
 
 ### Payment Confirmation Success
+
 ```json
 {
   "success": true,
@@ -191,28 +204,36 @@ db.orders.find({ paymentStatus: "pending" })
 ## Common Issues & Solutions
 
 ### Issue: Order not creating
+
 **Solution:**
+
 - Check MongoDB connection in `.env`
 - Verify product ID exists in database
 - Check all required fields are provided
 - Look at browser console for errors
 
 ### Issue: Payment confirmation failing
+
 **Solution:**
+
 - Verify order ID is correct
 - Check order exists in database
 - Ensure order status is "pending"
 - Check API endpoint is correct
 
 ### Issue: WhatsApp not opening
+
 **Solution:**
+
 - Verify WhatsApp number in `.env`
 - Check URL encoding is correct
 - Test on mobile device
 - Ensure WhatsApp is installed
 
 ### Issue: Build errors
+
 **Solution:**
+
 - Run `npm run build` to see errors
 - Fix any TypeScript errors
 - Check all imports are correct
@@ -221,6 +242,7 @@ db.orders.find({ paymentStatus: "pending" })
 ## Performance Testing
 
 ### Load Testing
+
 ```bash
 # Test order creation with multiple requests
 for i in {1..10}; do
@@ -231,6 +253,7 @@ done
 ```
 
 ### Database Performance
+
 - Monitor MongoDB query performance
 - Check index usage
 - Verify order number generation is efficient
@@ -239,6 +262,7 @@ done
 ## Security Testing
 
 ### Input Validation
+
 - [ ] Test SQL injection attempts
 - [ ] Test XSS in customization text
 - [ ] Test invalid email formats
@@ -246,6 +270,7 @@ done
 - [ ] Test long strings in text fields
 
 ### Payment Security
+
 - [ ] Verify payment signature validation
 - [ ] Test payment amount tampering
 - [ ] Check order status transitions
@@ -254,6 +279,7 @@ done
 ## Success Criteria
 
 All tests should pass:
+
 - ✅ Orders create successfully
 - ✅ Payment flow works end-to-end
 - ✅ Order tracking displays correct data

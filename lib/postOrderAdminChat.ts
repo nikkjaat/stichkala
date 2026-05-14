@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import ChatMessage from "@/models/ChatMessage";
 import ChatThread from "@/models/ChatThread";
+import { fireWebPushAfterAdminMessage } from "@/lib/sendChatWebPush";
 import { resolvePrimaryThread } from "@/lib/chatPrimaryThread";
 import {
   orderReceivedChatBodyAgreed,
@@ -25,6 +26,11 @@ export async function appendOrderReceivedAdminChat(
     body,
   });
   await ChatThread.findByIdAndUpdate(threadId, { lastMessageAt: new Date() });
+  const th = await ChatThread.findById(threadId).select("clientId").lean();
+  const cid = String((th as { clientId?: string } | null)?.clientId ?? "").trim();
+  if (cid) {
+    fireWebPushAfterAdminMessage(String(threadId), cid, { kind: "text", body });
+  }
 }
 
 /** Primary thread for this visitor (same device / chat client id). */
@@ -48,13 +54,14 @@ export async function appendAdminTextChatForVisitor(
   const text = String(body ?? "").trim();
   if (!cid || !text) return;
   const thread = await resolvePrimaryThread(cid);
-  await ChatMessage.create({
+  const msg = await ChatMessage.create({
     threadId: thread._id,
     sender: "admin",
     kind: "text",
     body: text,
   });
   await ChatThread.findByIdAndUpdate(thread._id, { lastMessageAt: new Date() });
+  fireWebPushAfterAdminMessage(String(thread._id), cid, msg.toObject());
 }
 
 /** Admin → visitor: status text plus Track Order button (no URL in body). */
@@ -68,7 +75,7 @@ export async function appendAdminTrackOrderChatForVisitor(
   const on = String(orderNumber ?? "").trim();
   if (!cid || !text || !on) return;
   const thread = await resolvePrimaryThread(cid);
-  await ChatMessage.create({
+  const msg = await ChatMessage.create({
     threadId: thread._id,
     sender: "admin",
     kind: "track_order",
@@ -76,4 +83,5 @@ export async function appendAdminTrackOrderChatForVisitor(
     orderNumber: on,
   });
   await ChatThread.findByIdAndUpdate(thread._id, { lastMessageAt: new Date() });
+  fireWebPushAfterAdminMessage(String(thread._id), cid, msg.toObject());
 }

@@ -7,6 +7,7 @@ import { syncVisitorPublicIdForClient } from "@/lib/chatVisitorSync";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
 import { serializeMessagesWithProductPreviews } from "@/lib/enrichChatMessages";
 import { isCloudinaryChatAttachmentUrl } from "@/lib/chatAttachmentUrl";
+import { fireWebPushAfterVisitorMessage } from "@/lib/sendChatWebPush";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +139,8 @@ export async function POST(
     thread.lastMessageAt = new Date();
     await thread.save();
     await syncVisitorPublicIdForClient(clientId);
+
+    fireWebPushAfterVisitorMessage(threadId, msg.toObject());
 
     return NextResponse.json({
       success: true,
