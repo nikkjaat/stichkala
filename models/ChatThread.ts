@@ -25,7 +25,7 @@ export interface IChatThread {
   productEnquiryCount?: number;
 }
 
-const ChatThreadSchema = new mongoose.Schema<IChatThread>(
+const ChatThreadSchema = new mongoose.Schema(
   {
     clientId: { type: String, required: true, index: true },
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
