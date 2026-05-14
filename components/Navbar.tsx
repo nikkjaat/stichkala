@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { HiMenu, HiX } from "react-icons/hi";
+import ChatNotifToggle from "@/components/ChatNotifToggle";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -163,6 +164,18 @@ export default function Navbar() {
                     </motion.div>
                   ))}
                 </div>
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ delay: navLinks.length * 0.1 }}
+                  className="px-4 py-4 mx-4 border-b border-gray-200"
+                >
+                  <p className="text-xs text-text-light mb-2">
+                    Shop chat — popup alerts when the tab is in the background
+                  </p>
+                  <ChatNotifToggle className="w-full justify-between" />
+                </motion.div>
               </motion.div>
             </>
           )}

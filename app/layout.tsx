@@ -4,6 +4,7 @@ import { Playfair_Display, Poppins } from "next/font/google";
 import Script from "next/script";
 import Navbar from "@/components/Navbar";
 import FloatingButtons from "@/components/FloatingButtons";
+import BrowserNotifyBanner from "@/components/BrowserNotifyBanner";
 import { CustomerChatProvider } from "@/components/CustomerChat";
 
 const playfair = Playfair_Display({
@@ -45,6 +46,7 @@ export default function RootLayout({
         <CustomerChatProvider>
           <Navbar />
           {children}
+          <BrowserNotifyBanner />
           <FloatingButtons />
         </CustomerChatProvider>
       </body>

@@ -19,8 +19,10 @@ import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import { chatFetch } from "@/lib/chatFetch";
 import {
   shouldNotifyAdminChat,
-  showBrowserChatNotification,
+  showChatBrowserNotification,
+  ensureChatNotifyServiceWorker,
 } from "@/lib/chatPushNotification";
+import ChatNotifToggle from "@/components/ChatNotifToggle";
 
 type ProductMini = { _id: string; name: string; basePrice: number };
 
@@ -99,6 +101,7 @@ export default function AdminChatPanel({
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
+  const [showAdminNotifNudge, setShowAdminNotifNudge] = useState(false);
   const prevUnreadCountRef = useRef(0);
   const adminUnreadBaselineDoneRef = useRef(false);
   const adminMessagesScrollRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +120,23 @@ export default function AdminChatPanel({
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!active) {
+      setShowAdminNotifNudge(false);
+      return;
+    }
+    const tick = () => {
+      if (typeof window !== "undefined" && "Notification" in window) {
+        setShowAdminNotifNudge(Notification.permission === "default");
+      } else {
+        setShowAdminNotifNudge(false);
+      }
+    };
+    tick();
+    window.addEventListener("sk-permission-change", tick);
+    return () => window.removeEventListener("sk-permission-change", tick);
+  }, [active]);
 
   useEffect(() => {
     return () => {
@@ -167,7 +187,7 @@ export default function AdminChatPanel({
         n > prevUnreadCountRef.current &&
         shouldNotifyAdminChat({ chatsTabActive: activeRef.current })
       ) {
-        showBrowserChatNotification({
+        showChatBrowserNotification({
           title,
           body,
           tag: `sk-admin-panel-${n}`,
@@ -515,7 +535,7 @@ export default function AdminChatPanel({
 
   const chatPanel = selectedId ? (
     <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-      <div className="p-2 border-b border-gray-100 shrink-0">
+      <div className="p-2 border-b border-gray-100 shrink-0 flex items-center justify-between gap-2">
         <button
           type="button"
           className="flex items-center gap-1 text-sm text-rose font-medium px-2 py-1.5 rounded-lg hover:bg-rose/10"
@@ -524,6 +544,7 @@ export default function AdminChatPanel({
           <FiArrowLeft />
           All conversations
         </button>
+        <ChatNotifToggle />
       </div>
 
       <div className="p-3 border-b border-gray-100 shrink-0">
@@ -872,6 +893,30 @@ export default function AdminChatPanel({
         onClose={() => setAttachmentLightbox(null)}
       />
 
+      {showAdminNotifNudge ? (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-950 flex flex-wrap items-center gap-2 justify-between gap-y-2">
+          <p className="min-w-0 flex-1 leading-snug">
+            Turn on <strong>browser notifications</strong> for new visitor
+            messages when this tab is in the background.
+          </p>
+          <div className="flex flex-wrap items-center gap-2 shrink-0 justify-end">
+            <ChatNotifToggle />
+            <button
+              type="button"
+              className="shrink-0 rounded-full bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+            onClick={() => {
+              void Notification.requestPermission().then((p) => {
+                if (p === "granted") void ensureChatNotifyServiceWorker();
+                window.dispatchEvent(new Event("sk-permission-change"));
+              });
+            }}
+            >
+              Allow alerts
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {pendingAdminAttachment ? (
         <div
           className="fixed inset-0 z-[240] flex items-center justify-center bg-black/50 p-4"
@@ -1020,8 +1065,9 @@ export default function AdminChatPanel({
       {!selectedId ? (
         <div className="max-w-xl mx-auto">
           <div className="flex flex-col bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm max-h-[70vh]">
-            <div className="p-3 border-b border-gray-100 font-medium text-text-dark text-sm shrink-0">
-              Visitors ({conversations.length})
+            <div className="p-3 border-b border-gray-100 font-medium text-text-dark text-sm shrink-0 flex items-center justify-between gap-2">
+              <span>Visitors ({conversations.length})</span>
+              <ChatNotifToggle />
             </div>
             <div className="flex-1 overflow-y-auto divide-y min-h-0">
               {!conversationsHydrated && conversations.length === 0 ? (

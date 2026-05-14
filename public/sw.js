@@ -25,8 +25,15 @@ self.addEventListener("push", function (event) {
 
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();
-  const url = event.notification.data && event.notification.data.url;
-  const target = typeof url === "string" && url.length ? url : "/";
+  const raw = event.notification.data && event.notification.data.url;
+  let target = typeof raw === "string" && raw.length ? raw : "/";
+  if (target.startsWith("/") && self.location && self.location.origin) {
+    try {
+      target = new URL(target, self.location.origin).href;
+    } catch (e) {
+      target = self.location.origin + (target.startsWith("/") ? target : "/" + target);
+    }
+  }
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
       for (let i = 0; i < list.length; i++) {

@@ -28,10 +28,12 @@ import CustomizationModal from "@/components/CustomizationModal";
 import { chatFetch } from "@/lib/chatFetch";
 import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import {
+  ensureChatNotifyServiceWorker,
   formatChatMessageNotificationBody,
   shouldNotifyVisitorChat,
-  showBrowserChatNotification,
+  showChatBrowserNotification,
 } from "@/lib/chatPushNotification";
+import ChatNotifToggle from "@/components/ChatNotifToggle";
 
 export type ChatProductRef = { _id: string; name: string };
 
@@ -190,6 +192,12 @@ export function CustomerChatProvider({
   const customerPrevLastMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    void ensureChatNotifyServiceWorker();
+  }, []);
+
+  useEffect(() => {
     visitorUnreadBaselineDoneRef.current = false;
     prevUnreadRef.current = 0;
     unreadPollMetaRef.current = null;
@@ -203,6 +211,18 @@ export function CustomerChatProvider({
     }
     setNotifPerm(Notification.permission);
   }, [panelOpen]);
+
+  useEffect(() => {
+    const sync = () => {
+      if (typeof window === "undefined" || !("Notification" in window)) {
+        setNotifPerm("unsupported");
+        return;
+      }
+      setNotifPerm(Notification.permission);
+    };
+    window.addEventListener("sk-permission-change", sync);
+    return () => window.removeEventListener("sk-permission-change", sync);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -299,7 +319,7 @@ export function CustomerChatProvider({
       shouldNotifyVisitorChat({ panelOpen })
     ) {
       const meta = unreadPollMetaRef.current;
-      showBrowserChatNotification({
+      showChatBrowserNotification({
         title: meta?.title ?? "StichKala",
         body: meta?.body ?? "New message from the shop.",
         tag: `sk-visitor-unread-${unreadTotal}`,
@@ -334,7 +354,7 @@ export function CustomerChatProvider({
     if (!shouldNotifyVisitorChat({ panelOpen })) return;
     const chatName =
       threads.find((t) => t._id === activeThreadId)?.productName ?? "Chat";
-    showBrowserChatNotification({
+    showChatBrowserNotification({
       title: `StichKala · ${chatName}`,
       body: formatChatMessageNotificationBody(last),
       tag: `sk-visitor-msg-${last._id}`,
@@ -691,14 +711,9 @@ export function CustomerChatProvider({
     }
     const permission = await Notification.requestPermission();
     setNotifPerm(permission);
+    window.dispatchEvent(new Event("sk-permission-change"));
     if (permission === "granted") {
-      alert(
-        "Notifications enabled — you'll get alerts for new messages when this tab is in the background."
-      );
-    } else {
-      alert(
-        "Notifications were denied. You can allow them later in your browser settings for this site."
-      );
+      void ensureChatNotifyServiceWorker();
     }
   };
 
@@ -942,20 +957,19 @@ export function CustomerChatProvider({
                         )}
                       </p>
                     </div>
-                    {notifPerm === "unsupported" ? null : notifPerm ===
-                      "granted" ? (
-                      <span className="text-[10px] text-text-light shrink-0 px-2 max-w-[7rem] leading-tight text-right">
-                        Notifications on
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-[10px] text-rose font-medium px-2 py-1 rounded-full border border-rose/40 hover:bg-rose/10 shrink-0"
-                        onClick={() => void enableNotifications()}
-                      >
-                        Enable notifications
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      <ChatNotifToggle />
+                      {notifPerm !== "unsupported" &&
+                      notifPerm !== "granted" ? (
+                        <button
+                          type="button"
+                          className="text-[10px] text-rose font-medium px-2 py-1 rounded-full border border-rose/40 hover:bg-rose/10 shrink-0"
+                          onClick={() => void enableNotifications()}
+                        >
+                          Enable in browser
+                        </button>
+                      ) : null}
+                    </div>
                     <button
                       type="button"
                       aria-label="Close"

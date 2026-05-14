@@ -11,7 +11,8 @@ import { useCustomerChat } from "@/components/CustomerChat";
 import { chatFetch } from "@/lib/chatFetch";
 import {
   shouldNotifyAdminChat,
-  showBrowserChatNotification,
+  showChatBrowserNotification,
+  requestChatNotificationsFromUserGesture,
 } from "@/lib/chatPushNotification";
 
 export default function FloatingButtons() {
@@ -85,7 +86,7 @@ export default function FloatingButtons() {
           Notification.permission === "granted" &&
           shouldNotifyAdminChat({ chatsTabActive: false })
         ) {
-          showBrowserChatNotification({
+          showChatBrowserNotification({
             title,
             body,
             tag: `sk-admin-float-${n}`,
@@ -160,7 +161,13 @@ export default function FloatingButtons() {
         ) : (
           <button
             type="button"
-            onClick={() => void chat?.openChatPanel()}
+            onClick={() => {
+              requestChatNotificationsFromUserGesture();
+              void (async () => {
+                await chat?.openChatPanel?.();
+                window.dispatchEvent(new Event("sk-permission-change"));
+              })();
+            }}
             className="relative w-12 h-12 bg-rose text-white rounded-full shadow-lg hover:bg-rose-dark transition-all flex items-center justify-center touch-manipulation"
             title="Chat with StichKala (shop chat)"
             aria-label="Chat with StichKala about orders or payments"
