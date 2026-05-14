@@ -95,6 +95,9 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
     const thread = await resolvePrimaryThread(clientId);
+    const messageCountBefore = await ChatMessage.countDocuments({
+      threadId: thread._id,
+    });
     let dirty = false;
 
     if (displayName && !thread.displayName) {
@@ -122,10 +125,8 @@ export async function POST(request: NextRequest) {
       await thread.save();
     }
 
-    const messageCount = await ChatMessage.countDocuments({
-      threadId: thread._id,
-    });
-    if (messageCount === 0) {
+    /** First-ever activity on this thread: send one admin welcome (not repeated on later opens). */
+    if (messageCountBefore === 0) {
       const welcome =
         "Welcome to StichKala! Ask us about products, sizes, delivery, or custom work — we reply here as soon as we can.";
       await ChatMessage.create({

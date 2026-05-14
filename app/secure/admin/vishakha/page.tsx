@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import AdminChatPanel from "@/components/AdminChatPanel";
 import AdminContactSubmissionsPanel from "@/components/AdminContactSubmissionsPanel";
+import AdminProductSubscribersPanel from "@/components/AdminProductSubscribersPanel";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiPlus,
@@ -301,7 +302,7 @@ function AdminCategoryManager({
 export default function AdminPage() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<
-    "orders" | "products" | "chats" | "contact"
+    "orders" | "products" | "chats" | "contact" | "subscribers"
   >("orders");
   const [chatUnread, setChatUnread] = useState(0);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -358,7 +359,8 @@ export default function AdminPage() {
       tab === "orders" ||
       tab === "products" ||
       tab === "chats" ||
-      tab === "contact"
+      tab === "contact" ||
+      tab === "subscribers"
     ) {
       setActiveTab(tab);
     }
@@ -592,6 +594,16 @@ export default function AdminPage() {
               }`}
             >
               Contact forms
+            </button>
+            <button
+              onClick={() => setActiveTab("subscribers")}
+              className={`pb-3 px-1 font-medium transition-colors text-sm sm:text-base ${
+                activeTab === "subscribers"
+                  ? "border-b-2 border-rose text-rose"
+                  : "text-text-light hover:text-text-dark"
+              }`}
+            >
+              Subscribers
             </button>
           </div>
         </div>
@@ -1161,6 +1173,10 @@ export default function AdminPage() {
 
         <div className={activeTab === "contact" ? "" : "hidden"}>
           <AdminContactSubmissionsPanel active={activeTab === "contact"} />
+        </div>
+
+        <div className={activeTab === "subscribers" ? "" : "hidden"}>
+          <AdminProductSubscribersPanel active={activeTab === "subscribers"} />
         </div>
 
         {/* Order Products Popup */}

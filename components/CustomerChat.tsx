@@ -403,6 +403,17 @@ export function CustomerChatProvider({
   }, [clientId, loadThreads, openPanelWithThread]);
 
   const openChatPanel = useCallback(async () => {
+    if (!clientId) return;
+    /** POST runs server welcome for brand-new threads; GET alone only resolves the thread. */
+    try {
+      await chatFetch("/api/chat/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      });
+    } catch {
+      /* non-fatal */
+    }
     const list = await loadThreads();
     if (list.length === 0) {
       await openGeneralChat();
@@ -415,7 +426,7 @@ export function CustomerChatProvider({
     } else if (activeThreadId) {
       await loadMessages(activeThreadId);
     }
-  }, [loadThreads, openGeneralChat, activeThreadId, loadMessages]);
+  }, [clientId, loadThreads, openGeneralChat, activeThreadId, loadMessages]);
 
   const offerProductChat = useCallback((product: ChatProductRef) => {
     setConfirmProduct(product);
