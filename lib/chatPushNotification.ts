@@ -116,11 +116,73 @@ function notifyIconUrl(): string | undefined {
   }
 }
 
-function showBrowserChatNotificationLegacy(opts: {
+/** Options for chat/product alerts; click target is derived for SW + legacy Notification. */
+export type BrowserChatNotificationOpts = {
   title: string;
   body: string;
   tag?: string;
-}): void {
+  /** Visitor: open shop chat to this thread (`?sk_chat_thread=`). */
+  openVisitorThreadId?: string;
+  /** Admin: open dashboard Chats tab on this thread. */
+  openAdminThreadId?: string;
+  /** Open catalog product detail (`/products?product=`). */
+  openProductId?: string;
+  /**
+   * Visitor client id — when set with `openVisitorThreadId`, mobile notifications
+   * can show **Read** / **Reply** actions (service worker marks admin messages read).
+   */
+  notificationClientId?: string;
+};
+
+function buildNotificationClickHref(opts: BrowserChatNotificationOpts): string {
+  if (typeof window === "undefined") return "/";
+  const origin = window.location.origin;
+  const adm = opts.openAdminThreadId?.trim();
+  if (adm) {
+    return `${origin}/secure/admin/vishakha?tab=chats&thread=${encodeURIComponent(adm)}`;
+  }
+  const pid = opts.openProductId?.trim();
+  if (pid) {
+    return `${origin}/products?product=${encodeURIComponent(pid)}`;
+  }
+  const vt = opts.openVisitorThreadId?.trim();
+  if (vt) {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("sk_chat_thread", vt);
+      return u.href;
+    } catch {
+      return `${origin}/?sk_chat_thread=${encodeURIComponent(vt)}`;
+    }
+  }
+  try {
+    return window.location.href;
+  } catch {
+    return `${origin}/`;
+  }
+}
+
+/** Same as open URL plus `sk_notif_reply=1` so the app focuses the chat composer. */
+function buildReplyClickHref(opts: BrowserChatNotificationOpts): string {
+  const base = buildNotificationClickHref(opts);
+  try {
+    const u = new URL(base);
+    u.searchParams.set("sk_notif_reply", "1");
+    return u.href;
+  } catch {
+    return base;
+  }
+}
+
+function chatNotificationHasSwActions(opts: BrowserChatNotificationOpts): boolean {
+  const adm = opts.openAdminThreadId?.trim();
+  if (adm) return true;
+  const vt = opts.openVisitorThreadId?.trim();
+  const cid = opts.notificationClientId?.trim();
+  return Boolean(vt && cid);
+}
+
+function showBrowserChatNotificationLegacy(opts: BrowserChatNotificationOpts): void {
   if (typeof window === "undefined") return;
   if (!("Notification" in window) || Notification.permission !== "granted") {
     return;
@@ -128,16 +190,28 @@ function showBrowserChatNotificationLegacy(opts: {
   const body = String(opts.body ?? "").trim().slice(0, 240);
   const title = String(opts.title ?? "Message").trim().slice(0, 80);
   const icon = notifyIconUrl();
+  const clickHref = buildNotificationClickHref(opts);
+  const withActions = chatNotificationHasSwActions(opts);
+  const replyHref = withActions ? buildReplyClickHref(opts) : clickHref;
+  const notificationOpts: NotificationOptions & {
+    vibrate?: number[];
+    actions?: Array<{ action: string; title: string }>;
+  } = {
+    body: body || "New message",
+    tag: opts.tag ?? "stichkala-chat",
+    icon,
+    badge: icon,
+    silent: false,
+    requireInteraction: false,
+    vibrate: [180, 80, 180],
+  };
+  if (withActions) {
+    notificationOpts.actions = [
+      { action: "reply", title: "Reply" },
+      { action: "read", title: "Read" },
+    ];
+  }
   try {
-    const notificationOpts: NotificationOptions & { vibrate?: number[] } = {
-      body: body || "New message",
-      tag: opts.tag ?? "stichkala-chat",
-      icon,
-      badge: icon,
-      silent: false,
-      requireInteraction: false,
-      vibrate: [180, 80, 180],
-    };
     const n = new Notification(title, notificationOpts);
     n.onclick = () => {
       try {
@@ -146,17 +220,38 @@ function showBrowserChatNotificationLegacy(opts: {
         /* ignore */
       }
       n.close();
+      try {
+        window.location.assign(clickHref);
+      } catch {
+        /* ignore */
+      }
     };
   } catch {
-    /* ignore */
+    try {
+      delete notificationOpts.actions;
+      const n2 = new Notification(title, notificationOpts);
+      n2.onclick = () => {
+        try {
+          window.focus();
+        } catch {
+          /* ignore */
+        }
+        n2.close();
+        try {
+          window.location.assign(clickHref);
+        } catch {
+          /* ignore */
+        }
+      };
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-async function showBrowserChatNotificationAsync(opts: {
-  title: string;
-  body: string;
-  tag?: string;
-}): Promise<void> {
+async function showBrowserChatNotificationAsync(
+  opts: BrowserChatNotificationOpts
+): Promise<void> {
   if (typeof window === "undefined") return;
   if (!("Notification" in window) || Notification.permission !== "granted") {
     return;
@@ -165,11 +260,22 @@ async function showBrowserChatNotificationAsync(opts: {
   const title = String(opts.title ?? "Message").trim().slice(0, 80);
   const tag = opts.tag ?? "stichkala-chat";
   const icon = notifyIconUrl();
-  let openUrl: string;
-  try {
-    openUrl = window.location.href;
-  } catch {
-    openUrl = "/";
+  const clickHref = buildNotificationClickHref(opts);
+  const withActions = chatNotificationHasSwActions(opts);
+  const replyHref = withActions ? buildReplyClickHref(opts) : clickHref;
+  const readThreadId =
+    opts.openAdminThreadId?.trim() ||
+    opts.openVisitorThreadId?.trim() ||
+    "";
+  const readClientId = opts.notificationClientId?.trim() || "";
+  const readAsAdmin = Boolean(opts.openAdminThreadId?.trim());
+
+  const data: Record<string, string> = { url: clickHref };
+  if (withActions && readThreadId) {
+    data.replyUrl = replyHref;
+    data.readThreadId = readThreadId;
+    data.readClientId = readClientId;
+    data.readAsAdmin = readAsAdmin ? "1" : "0";
   }
 
   const reg = await getChatNotifyServiceWorkerRegistration();
@@ -184,7 +290,15 @@ async function showBrowserChatNotificationAsync(opts: {
         requireInteraction: false,
         renotify: true,
         vibrate: [180, 80, 180],
-        data: { url: openUrl },
+        data,
+        ...(withActions && readThreadId
+          ? {
+              actions: [
+                { action: "reply", title: "Reply" },
+                { action: "read", title: "Read" },
+              ],
+            }
+          : {}),
       });
       return;
     } catch {
@@ -194,20 +308,12 @@ async function showBrowserChatNotificationAsync(opts: {
   showBrowserChatNotificationLegacy(opts);
 }
 
-export function showBrowserChatNotification(opts: {
-  title: string;
-  body: string;
-  tag?: string;
-}): void {
+export function showBrowserChatNotification(opts: BrowserChatNotificationOpts): void {
   void showBrowserChatNotificationAsync(opts);
 }
 
 /** Chat-only: respects Alerts On/Off in the chat UI (localStorage). */
-export function showChatBrowserNotification(opts: {
-  title: string;
-  body: string;
-  tag?: string;
-}): void {
+export function showChatBrowserNotification(opts: BrowserChatNotificationOpts): void {
   if (!getChatNotificationsEnabled()) return;
   showBrowserChatNotification(opts);
 }

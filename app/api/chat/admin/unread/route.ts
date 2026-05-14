@@ -21,6 +21,7 @@ export async function GET() {
 
     let notifyTitle: string | undefined;
     let notifyBody: string | undefined;
+    let notifyThreadId: string | undefined;
     if (unread > 0) {
       const latestUnread = await ChatMessage.findOne({
         sender: "user",
@@ -30,6 +31,7 @@ export async function GET() {
         .lean();
 
       if (latestUnread?.threadId) {
+        notifyThreadId = String(latestUnread.threadId);
         const th = await ChatThread.findById(latestUnread.threadId)
           .select("visitorPublicId clientId lastEnquiredProductName productName")
           .lean();
@@ -56,6 +58,7 @@ export async function GET() {
       unread,
       latestAt: latest?.createdAt ?? null,
       latestThreadId: latest?.threadId ? String(latest.threadId) : null,
+      ...(notifyThreadId ? { notifyThreadId } : {}),
       ...(notifyTitle && notifyBody ? { notifyTitle, notifyBody } : {}),
     });
   } catch (e) {

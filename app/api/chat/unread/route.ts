@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
 
     let notifyTitle: string | undefined;
     let notifyBody: string | undefined;
+    let notifyThreadId: string | undefined;
     if (unread > 0) {
       const latestUnread = await ChatMessage.findOne({
         threadId: { $in: ids },
@@ -40,6 +41,9 @@ export async function GET(request: NextRequest) {
         .lean();
 
       if (latestUnread) {
+        if (latestUnread.threadId) {
+          notifyThreadId = String(latestUnread.threadId);
+        }
         const th = await ChatThread.findById(latestUnread.threadId)
           .select("productName lastEnquiredProductName")
           .lean();
@@ -58,6 +62,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       unread,
+      ...(notifyThreadId ? { notifyThreadId } : {}),
       ...(notifyTitle && notifyBody ? { notifyTitle, notifyBody } : {}),
     });
   } catch (e) {

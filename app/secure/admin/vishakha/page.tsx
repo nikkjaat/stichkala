@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AdminChatPanel from "@/components/AdminChatPanel";
 import AdminContactSubmissionsPanel from "@/components/AdminContactSubmissionsPanel";
@@ -1163,11 +1163,13 @@ export default function AdminPage() {
               are on another tab, allow notifications for this site in your
               browser.
             </p>
-            <AdminChatPanel
-              products={products}
-              active={activeTab === "chats"}
-              onUnread={setChatUnread}
-            />
+            <Suspense fallback={null}>
+              <AdminChatPanel
+                products={products}
+                active={activeTab === "chats"}
+                onUnread={setChatUnread}
+              />
+            </Suspense>
           </div>
         </div>
 

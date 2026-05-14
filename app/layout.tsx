@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import FloatingButtons from "@/components/FloatingButtons";
 import BrowserNotifyBanner from "@/components/BrowserNotifyBanner";
 import { CustomerChatProvider } from "@/components/CustomerChat";
+import NotificationNavBridge from "@/components/NotificationNavBridge";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -44,6 +45,7 @@ export default function RootLayout({
           async
         />
         <CustomerChatProvider>
+          <NotificationNavBridge />
           <Navbar />
           {children}
           <BrowserNotifyBanner />

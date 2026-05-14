@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import React, {
   createContext,
@@ -10,6 +10,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  Suspense,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -127,6 +128,48 @@ const CustomerChatContext = createContext<CustomerChatContextValue | null>(
   null
 );
 
+/** Open chat from `?sk_chat_thread=` (notification / cold link). Wrapped in Suspense for `useSearchParams`. */
+function VisitorChatQueryParamOpener({
+  clientId,
+  openPanelWithThread,
+}: {
+  clientId: string;
+  openPanelWithThread: (threadId: string) => Promise<void>;
+}) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const consumedRef = useRef<string | null>(null);
+  const tid = searchParams.get("sk_chat_thread")?.trim() ?? "";
+  const focusReply = searchParams.get("sk_notif_reply") === "1";
+
+  useEffect(() => {
+    if (!tid) {
+      consumedRef.current = null;
+      return;
+    }
+    if (!clientId) return;
+    const key = `${tid}:${focusReply ? "r" : "n"}`;
+    if (consumedRef.current === key) return;
+    consumedRef.current = key;
+    void openPanelWithThread(tid).finally(() => {
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete("sk_chat_thread");
+        u.searchParams.delete("sk_notif_reply");
+        const next = u.pathname + (u.search || "");
+        router.replace(next || "/", { scroll: false });
+      } catch {
+        /* ignore */
+      }
+      if (focusReply) {
+        window.dispatchEvent(new CustomEvent("sk-focus-visitor-chat-draft"));
+      }
+    });
+  }, [tid, focusReply, clientId, openPanelWithThread, router]);
+
+  return null;
+}
+
 export function useCustomerChat() {
   return useContext(CustomerChatContext);
 }
@@ -181,12 +224,15 @@ export function CustomerChatProvider({
     NotificationPermission | "unsupported"
   >("unsupported");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const chatDraftInputRef = useRef<HTMLInputElement | null>(null);
   const lastSeenLatestRef = useRef<string | null>(null);
   const prevUnreadRef = useRef(0);
   const visitorUnreadBaselineDoneRef = useRef(false);
-  const unreadPollMetaRef = useRef<{ title: string; body: string } | null>(
-    null
-  );
+  const unreadPollMetaRef = useRef<{
+    title: string;
+    body: string;
+    threadId?: string;
+  } | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const lastThreadForScrollRef = useRef<string | null>(null);
   const customerPrevLastMessageIdRef = useRef<string | null>(null);
@@ -243,11 +289,17 @@ export function CustomerChatProvider({
         unread?: number;
         notifyTitle?: string;
         notifyBody?: string;
+        notifyThreadId?: string;
       };
       if (!j.success) return;
       const n = Number(j.unread) || 0;
       if (typeof j.notifyTitle === "string" && typeof j.notifyBody === "string") {
-        unreadPollMetaRef.current = { title: j.notifyTitle, body: j.notifyBody };
+        unreadPollMetaRef.current = {
+          title: j.notifyTitle,
+          body: j.notifyBody,
+          threadId:
+            typeof j.notifyThreadId === "string" ? j.notifyThreadId : undefined,
+        };
       } else {
         unreadPollMetaRef.current = null;
       }
@@ -323,6 +375,8 @@ export function CustomerChatProvider({
         title: meta?.title ?? "StichKala",
         body: meta?.body ?? "New message from the shop.",
         tag: `sk-visitor-unread-${unreadTotal}`,
+        openVisitorThreadId: meta?.threadId,
+        notificationClientId: clientId || undefined,
       });
     }
     prevUnreadRef.current = unreadTotal;
@@ -358,6 +412,8 @@ export function CustomerChatProvider({
       title: `StichKala · ${chatName}`,
       body: formatChatMessageNotificationBody(last),
       tag: `sk-visitor-msg-${last._id}`,
+      openVisitorThreadId: activeThreadId ?? undefined,
+      notificationClientId: clientId || undefined,
     });
   }, [messages, panelOpen, activeThreadId, clientId, threads]);
 
@@ -407,6 +463,44 @@ export function CustomerChatProvider({
     },
     [loadMessages]
   );
+
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const ce = e as CustomEvent<{
+        threadId?: string;
+        focusReply?: boolean;
+      }>;
+      const tid = ce.detail?.threadId?.trim();
+      if (!tid || !clientId) return;
+      const focusReply = Boolean(ce.detail?.focusReply);
+      void openPanelWithThread(tid).then(() => {
+        if (focusReply) {
+          window.dispatchEvent(new CustomEvent("sk-focus-visitor-chat-draft"));
+        }
+      });
+    };
+    window.addEventListener("sk-open-visitor-chat", onOpen as EventListener);
+    return () =>
+      window.removeEventListener("sk-open-visitor-chat", onOpen as EventListener);
+  }, [clientId, openPanelWithThread]);
+
+  useEffect(() => {
+    const focusDraft = () => {
+      window.setTimeout(() => {
+        chatDraftInputRef.current?.focus();
+      }, 200);
+    };
+    window.addEventListener("sk-focus-visitor-chat-draft", focusDraft);
+    return () =>
+      window.removeEventListener("sk-focus-visitor-chat-draft", focusDraft);
+  }, []);
+
+  useEffect(() => {
+    const onReadDone = () => void refreshUnread();
+    window.addEventListener("sk-notification-read-finished", onReadDone);
+    return () =>
+      window.removeEventListener("sk-notification-read-finished", onReadDone);
+  }, [refreshUnread]);
 
   const openGeneralChat = useCallback(async () => {
     if (!clientId) return;
@@ -719,6 +813,12 @@ export function CustomerChatProvider({
 
   return (
     <CustomerChatContext.Provider value={ctx}>
+      <Suspense fallback={null}>
+        <VisitorChatQueryParamOpener
+          clientId={clientId}
+          openPanelWithThread={openPanelWithThread}
+        />
+      </Suspense>
       {children}
 
       <ChatProductDetailModal
@@ -1291,6 +1391,7 @@ export function CustomerChatProvider({
                       <Paperclip className="w-5 h-5" />
                     </button>
                     <input
+                      ref={chatDraftInputRef}
                       className="flex-1 min-w-0 min-h-[44px] rounded-full border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-rose focus:ring-1 focus:ring-rose/30"
                       placeholder="Type a message…"
                       value={draft}

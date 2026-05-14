@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   Send,
@@ -70,6 +71,8 @@ export default function AdminChatPanel({
   active: boolean;
   onUnread?: (n: number) => void;
 }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -100,6 +103,7 @@ export default function AdminChatPanel({
     text: string;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const adminDraftInputRef = useRef<HTMLInputElement | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const [showAdminNotifNudge, setShowAdminNotifNudge] = useState(false);
   const prevUnreadCountRef = useRef(0);
@@ -110,6 +114,7 @@ export default function AdminChatPanel({
   const activeRef = useRef(active);
   const onUnreadRef = useRef(onUnread);
   const selectedIdRef = useRef(selectedId);
+  const consumedUrlThreadRef = useRef<string | null>(null);
 
   useEffect(() => {
     activeRef.current = active;
@@ -168,6 +173,7 @@ export default function AdminChatPanel({
         unread?: number;
         notifyTitle?: string;
         notifyBody?: string;
+        notifyThreadId?: string;
       };
       if (!j.success) return;
       const n = Number(j.unread) || 0;
@@ -191,6 +197,7 @@ export default function AdminChatPanel({
           title,
           body,
           tag: `sk-admin-panel-${n}`,
+          openAdminThreadId: j.notifyThreadId,
         });
       }
       prevUnreadCountRef.current = n;
@@ -199,6 +206,13 @@ export default function AdminChatPanel({
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    const fn = () => void refreshAdminUnread();
+    window.addEventListener("sk-notification-read-finished", fn);
+    return () =>
+      window.removeEventListener("sk-notification-read-finished", fn);
+  }, [refreshAdminUnread]);
 
   const loadMessages = useCallback(
     async (threadId: string) => {
@@ -315,7 +329,7 @@ export default function AdminChatPanel({
     }
   }, [active, selectedId, messages]);
 
-  const openConversation = (c: ConversationRow) => {
+  const openConversation = useCallback((c: ConversationRow) => {
     if (typeof window !== "undefined" && !selectedId) {
       window.history.pushState(
         { adminChat: true },
@@ -328,7 +342,45 @@ export default function AdminChatPanel({
     setMessages([]);
     setSelectedId(c.threadId);
     setSelectedClientId(c.clientId);
-  };
+  }, [selectedId]);
+
+  const threadFromUrl = searchParams.get("thread")?.trim() ?? "";
+  const notifReplyFromUrl = searchParams.get("sk_notif_reply") === "1";
+
+  useEffect(() => {
+    if (!active) return;
+    if (!threadFromUrl) {
+      consumedUrlThreadRef.current = null;
+      return;
+    }
+    if (!conversationsHydrated) return;
+    if (consumedUrlThreadRef.current === threadFromUrl) return;
+    const row = conversations.find((c) => c.threadId === threadFromUrl);
+    if (!row) return;
+    consumedUrlThreadRef.current = threadFromUrl;
+    openConversation(row);
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("thread");
+      if (notifReplyFromUrl) u.searchParams.delete("sk_notif_reply");
+      router.replace(u.pathname + u.search, { scroll: false });
+    } catch {
+      /* ignore */
+    }
+    if (notifReplyFromUrl) {
+      window.setTimeout(() => {
+        adminDraftInputRef.current?.focus();
+      }, 280);
+    }
+  }, [
+    active,
+    threadFromUrl,
+    notifReplyFromUrl,
+    conversationsHydrated,
+    conversations,
+    router,
+    openConversation,
+  ]);
 
   const closeChatFullScreen = () => {
     const st = window.history.state as { adminChat?: boolean } | null;
@@ -855,6 +907,7 @@ export default function AdminChatPanel({
           <Paperclip className="w-5 h-5" />
         </button>
         <input
+          ref={adminDraftInputRef}
           className="flex-1 min-w-0 border rounded-full px-3 py-2 text-sm"
           placeholder="Reply…"
           value={draft}

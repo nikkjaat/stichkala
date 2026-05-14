@@ -66,6 +66,7 @@ export default function FloatingButtons() {
           unread?: number;
           notifyTitle?: string;
           notifyBody?: string;
+          notifyThreadId?: string;
         };
         if (cancelled || !j.success || typeof j.unread !== "number") return;
         const n = j.unread;
@@ -90,6 +91,7 @@ export default function FloatingButtons() {
             title,
             body,
             tag: `sk-admin-float-${n}`,
+            openAdminThreadId: j.notifyThreadId,
           });
         }
         prevAdminFloatUnreadRef.current = n;

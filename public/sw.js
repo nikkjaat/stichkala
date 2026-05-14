@@ -23,24 +23,91 @@ self.addEventListener("push", function (event) {
   );
 });
 
-self.addEventListener("notificationclick", function (event) {
-  event.notification.close();
-  const raw = event.notification.data && event.notification.data.url;
-  let target = typeof raw === "string" && raw.length ? raw : "/";
+function resolveTargetUrl(raw) {
+  var target = typeof raw === "string" && raw.length ? raw : "/";
   if (target.startsWith("/") && self.location && self.location.origin) {
     try {
       target = new URL(target, self.location.origin).href;
     } catch (e) {
-      target = self.location.origin + (target.startsWith("/") ? target : "/" + target);
+      target =
+        self.location.origin + (target.startsWith("/") ? target : "/" + target);
     }
   }
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
-      for (let i = 0; i < list.length; i++) {
-        const c = list[i];
-        if ("focus" in c) return c.focus();
+  return target;
+}
+
+function postNavigateToClients(target) {
+  var msg = { type: "sk-notification-navigate", url: target };
+  return self.clients
+    .matchAll({ type: "window", includeUncontrolled: true })
+    .then(function (list) {
+      if (!list.length) {
+        if (self.clients.openWindow) return self.clients.openWindow(target);
+        return Promise.resolve();
+      }
+      for (var i = 0; i < list.length; i++) {
+        try {
+          list[i].postMessage(msg);
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      var first = list[0];
+      if (first && "focus" in first && typeof first.focus === "function") {
+        return Promise.resolve(first.focus()).catch(function () {
+          if (self.clients.openWindow) return self.clients.openWindow(target);
+        });
       }
       if (self.clients.openWindow) return self.clients.openWindow(target);
-    })
-  );
+      return Promise.resolve();
+    });
+}
+
+self.addEventListener("notificationclick", function (event) {
+  var notification = event.notification;
+  notification.close();
+  var data = notification.data || {};
+  var action = event.action || "";
+
+  if (action === "read") {
+    var tid = typeof data.readThreadId === "string" ? data.readThreadId.trim() : "";
+    if (!tid) return;
+    var isAdmin = data.readAsAdmin === "1";
+    var cid = typeof data.readClientId === "string" ? data.readClientId.trim() : "";
+    if (!isAdmin && !cid) return;
+    var bodyObj = isAdmin ? { asAdmin: true } : { clientId: cid };
+    event.waitUntil(
+      fetch(
+        self.location.origin + "/api/chat/threads/" + encodeURIComponent(tid) + "/read",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyObj),
+          credentials: isAdmin ? "include" : "same-origin",
+        }
+      )
+        .then(function () {
+          return self.clients
+            .matchAll({ type: "window", includeUncontrolled: true })
+            .then(function (list) {
+              for (var j = 0; j < list.length; j++) {
+                try {
+                  list[j].postMessage({ type: "sk-notification-read-finished" });
+                } catch (e) {
+                  /* ignore */
+                }
+              }
+            });
+        })
+        .catch(function () {})
+    );
+    return;
+  }
+
+  var raw =
+    action === "reply"
+      ? data.replyUrl || data.url
+      : data.url;
+  var target = resolveTargetUrl(raw);
+  event.waitUntil(postNavigateToClients(target));
 });
