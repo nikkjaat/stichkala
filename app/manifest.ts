@@ -9,8 +9,8 @@ export default function manifest(): MetadataRoute.Manifest {
       "Handmade gifts, personalised embroidery hoops, and accessories.",
     start_url: "/",
     display: "standalone",
-    background_color: "#fdfbf9",
-    theme_color: "#fff5f7",
+    background_color: "#ffffff",
+    theme_color: "#ffffff",
     icons: [
       {
         src: "/logo-192.png",

@@ -21,12 +21,12 @@ const poppins = Poppins({
   display: "swap",
 });
 
-/** Light pink — tints mobile browser chrome / status area (matches site). */
+/** White — mobile browser / status strip (battery, signal) matches navbar. */
 export const metadata: Metadata = {
   title: "StichKala - Personalised Embroidery & More",
   description:
     "Beautiful handmade gifts including personalised embroidery hoops, hand-painted hankies, and cute hair accessories. Each piece crafted with love.",
-  themeColor: "#fff5f7",
+  themeColor: "#ffffff",
   icons: {
     icon: [
       { url: "/logo-192.png", sizes: "192x192", type: "image/png" },
