@@ -5,6 +5,7 @@ import { Send, Loader2, Check, CheckCheck } from "lucide-react";
 import { FiArrowLeft } from "react-icons/fi";
 import { extractProductIdFromChatUrl } from "@/lib/chatProductUrl";
 import ChatProductDetailModal from "@/components/ChatProductDetailModal";
+import { chatFetch } from "@/lib/chatFetch";
 
 type ProductMini = { _id: string; name: string; basePrice: number };
 
@@ -70,7 +71,7 @@ export default function AdminChatPanel({
 
   const loadConversations = useCallback(async () => {
     try {
-      const r = await fetch("/api/chat/admin/conversations");
+      const r = await chatFetch("/api/chat/admin/conversations");
       const j = await r.json();
       if (j.success && Array.isArray(j.conversations)) {
         setConversations(j.conversations);
@@ -82,7 +83,7 @@ export default function AdminChatPanel({
 
   const refreshAdminUnread = useCallback(async () => {
     try {
-      const r = await fetch("/api/chat/admin/unread");
+      const r = await chatFetch("/api/chat/admin/unread");
       const j = await r.json();
       if (j.success) {
         const n = Number(j.unread) || 0;
@@ -107,13 +108,15 @@ export default function AdminChatPanel({
   const loadMessages = useCallback(
     async (threadId: string) => {
       try {
-        const r = await fetch(`/api/chat/admin/threads/${threadId}/messages`);
+        const r = await chatFetch(
+          `/api/chat/admin/threads/${threadId}/messages`
+        );
         const j = await r.json();
         if (j.success && Array.isArray(j.messages)) {
           const list = j.messages as MessageRow[];
           setMessages(list);
           if (threadId === selectedId) {
-            await fetch(`/api/chat/threads/${threadId}/read`, {
+            await chatFetch(`/api/chat/threads/${threadId}/read`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ asAdmin: true }),
@@ -144,11 +147,10 @@ export default function AdminChatPanel({
   }, [refreshAdminUnread]);
 
   useEffect(() => {
-    if (!active) return;
     void loadConversations();
-    const t = window.setInterval(() => void loadConversations(), 6000);
+    const t = window.setInterval(() => void loadConversations(), 5000);
     return () => window.clearInterval(t);
-  }, [active, loadConversations]);
+  }, [loadConversations]);
 
   /** Mobile / browser back closes the full-screen chat instead of leaving the admin site. */
   useEffect(() => {
@@ -240,7 +242,7 @@ export default function AdminChatPanel({
     if (!text || !selectedId || sending) return;
     setSending(true);
     try {
-      const r = await fetch(`/api/chat/admin/threads/${selectedId}/messages`, {
+      const r = await chatFetch(`/api/chat/admin/threads/${selectedId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -273,7 +275,7 @@ export default function AdminChatPanel({
     }
     setOfferBusyKey(rowKey);
     try {
-      const r = await fetch(`/api/chat/admin/threads/${selectedId}/offer`, {
+      const r = await chatFetch(`/api/chat/admin/threads/${selectedId}/offer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

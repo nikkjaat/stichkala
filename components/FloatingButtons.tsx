@@ -8,12 +8,14 @@ import { FaInstagram, FaComments } from "react-icons/fa";
 import { MdOutlineAdminPanelSettings } from "react-icons/md";
 import { INSTAGRAM_PROFILE_URL } from "@/lib/siteContact";
 import { useCustomerChat } from "@/components/CustomerChat";
+import { chatFetch } from "@/lib/chatFetch";
 
 export default function FloatingButtons() {
   const pathname = usePathname();
   const chat = useCustomerChat();
   const [isVisible, setIsVisible] = useState(false);
   const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+  const [adminChatUnread, setAdminChatUnread] = useState(0);
 
   const refreshAdminSession = useCallback(async () => {
     try {
@@ -39,13 +41,102 @@ export default function FloatingButtons() {
     return () => window.removeEventListener("focus", onFocus);
   }, [refreshAdminSession]);
 
-  if (pathname?.startsWith("/secure/admin")) {
-    return null;
-  }
+  useEffect(() => {
+    if (!pathname?.startsWith("/secure/admin")) return;
+    let cancelled = false;
+    const loadAdminUnread = async () => {
+      try {
+        const r = await chatFetch("/api/chat/admin/unread");
+        const j = (await r.json()) as {
+          success?: boolean;
+          unread?: number;
+        };
+        if (
+          !cancelled &&
+          j.success &&
+          typeof j.unread === "number"
+        ) {
+          setAdminChatUnread(j.unread);
+        }
+      } catch {
+        if (!cancelled) setAdminChatUnread(0);
+      }
+    };
+    void loadAdminUnread();
+    const id = window.setInterval(() => void loadAdminUnread(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [pathname]);
 
   const handleInstagramClick = () => {
     window.open(INSTAGRAM_PROFILE_URL, "_blank", "noopener,noreferrer");
   };
+
+  if (pathname?.startsWith("/secure/admin")) {
+    return (
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">
+        <motion.div
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{
+            opacity: isVisible ? 1 : 0,
+            scale: isVisible ? 1 : 0,
+          }}
+          transition={{ duration: 0.25 }}
+        >
+          <Link
+            href="/secure/admin/vishakha"
+            className="w-12 h-12 flex items-center justify-center rounded-full bg-text-dark text-white shadow-lg hover:bg-text-dark/90 transition-colors touch-manipulation"
+            title="Admin dashboard"
+            aria-label="Open admin dashboard"
+          >
+            <MdOutlineAdminPanelSettings className="text-2xl" />
+          </Link>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{
+            opacity: isVisible ? 1 : 0,
+            scale: isVisible ? 1 : 0,
+          }}
+          transition={{ duration: 0.25, delay: 0.04 }}
+        >
+          <Link
+            href="/secure/admin/vishakha?tab=chats"
+            className="relative w-12 h-12 flex items-center justify-center rounded-full bg-rose text-white shadow-lg hover:bg-rose-dark transition-colors touch-manipulation"
+            title="Customer chats"
+            aria-label="Open customer chats"
+          >
+            <FaComments className="text-xl" />
+            {adminChatUnread > 0 ? (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-white text-rose text-[10px] font-bold flex items-center justify-center border-2 border-rose shadow-sm">
+                {adminChatUnread > 99 ? "99+" : adminChatUnread}
+              </span>
+            ) : null}
+          </Link>
+        </motion.div>
+
+        <motion.button
+          type="button"
+          onClick={handleInstagramClick}
+          className="w-12 h-12 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center touch-manipulation"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{
+            opacity: isVisible ? 1 : 0,
+            scale: isVisible ? 1 : 0,
+          }}
+          transition={{ duration: 0.25, delay: 0.08 }}
+          aria-label="Open StichKala on Instagram"
+        >
+          <FaInstagram className="text-xl" />
+        </motion.button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end">

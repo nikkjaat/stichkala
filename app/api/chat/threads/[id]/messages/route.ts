@@ -6,6 +6,8 @@ import mongoose from "mongoose";
 import { syncVisitorPublicIdForClient } from "@/lib/chatVisitorSync";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
 
+export const dynamic = "force-dynamic";
+
 async function assertUserThread(threadId: string, clientId: string | null) {
   if (!mongoose.Types.ObjectId.isValid(threadId)) return null;
   const thread = await ChatThread.findById(threadId);

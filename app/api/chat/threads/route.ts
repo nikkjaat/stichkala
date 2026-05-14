@@ -7,6 +7,8 @@ import { buildProductPublicUrl } from "@/lib/chatProductUrl";
 import { syncVisitorPublicIdForClient } from "@/lib/chatVisitorSync";
 import { resolvePrimaryThread } from "@/lib/chatPrimaryThread";
 
+export const dynamic = "force-dynamic";
+
 function isOid(id: string) {
   return mongoose.Types.ObjectId.isValid(id);
 }

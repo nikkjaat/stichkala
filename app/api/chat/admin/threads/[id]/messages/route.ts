@@ -5,6 +5,8 @@ import ChatMessage from "@/models/ChatMessage";
 import mongoose from "mongoose";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }

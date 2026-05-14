@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import AdminChatPanel from "@/components/AdminChatPanel";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -297,6 +298,7 @@ function AdminCategoryManager({
 }
 
 export default function AdminPage() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<"orders" | "products" | "chats">(
     "orders"
   );
@@ -348,6 +350,13 @@ export default function AdminPage() {
     if (!q) return orders;
     return orders.filter((o) => o.orderNumber.toLowerCase().includes(q));
   }, [orders, orderSearch]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "orders" || tab === "products" || tab === "chats") {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   // Real-time updates using polling
   useEffect(() => {

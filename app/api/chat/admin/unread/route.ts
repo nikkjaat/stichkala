@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import ChatMessage from "@/models/ChatMessage";
 
+export const dynamic = "force-dynamic";
+
 /** Unread user → admin messages (admin dashboard) */
 export async function GET() {
   try {

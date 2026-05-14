@@ -5,6 +5,8 @@ import ChatThread from "@/models/ChatThread";
 import ChatMessage from "@/models/ChatMessage";
 import { resolvePrimaryThread } from "@/lib/chatPrimaryThread";
 
+export const dynamic = "force-dynamic";
+
 function previewLine(doc: {
   body: string;
   kind: string;

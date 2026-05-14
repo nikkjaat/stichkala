@@ -3,6 +3,8 @@ import connectDB from "@/lib/mongodb";
 import ChatThread from "@/models/ChatThread";
 import ChatMessage from "@/models/ChatMessage";
 
+export const dynamic = "force-dynamic";
+
 /** Unread admin → user messages across all threads for this visitor */
 export async function GET(request: NextRequest) {
   try {

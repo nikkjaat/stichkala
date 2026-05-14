@@ -8,6 +8,8 @@ import Razorpay from "razorpay";
 import crypto from "crypto";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
 
+export const dynamic = "force-dynamic";
+
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
   key_secret: process.env.RAZORPAY_KEY_SECRET!,

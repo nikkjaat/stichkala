@@ -3,6 +3,8 @@ import connectDB from "@/lib/mongodb";
 import ChatThread from "@/models/ChatThread";
 import Product from "@/models/Product";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: { token: string } }

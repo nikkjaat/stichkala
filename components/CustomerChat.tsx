@@ -22,6 +22,7 @@ import { getChatClientId } from "@/lib/chatClientId";
 import { extractProductIdFromChatUrl } from "@/lib/chatProductUrl";
 import ChatProductDetailModal from "@/components/ChatProductDetailModal";
 import CustomizationModal from "@/components/CustomizationModal";
+import { chatFetch } from "@/lib/chatFetch";
 
 export type ChatProductRef = { _id: string; name: string };
 
@@ -162,7 +163,7 @@ export function CustomerChatProvider({
   const refreshUnread = useCallback(async () => {
     if (!clientId) return;
     try {
-      const r = await fetch(
+      const r = await chatFetch(
         `/api/chat/unread?clientId=${encodeURIComponent(clientId)}`
       );
       const j = await r.json();
@@ -175,7 +176,7 @@ export function CustomerChatProvider({
   const loadThreads = useCallback(async () => {
     if (!clientId) return [];
     try {
-      const r = await fetch(
+      const r = await chatFetch(
         `/api/chat/threads?clientId=${encodeURIComponent(clientId)}`
       );
       const j = await r.json();
@@ -194,13 +195,13 @@ export function CustomerChatProvider({
       if (!clientId || !threadId) return;
       setLoadingMessages(true);
       try {
-        const r = await fetch(
+        const r = await chatFetch(
           `/api/chat/threads/${threadId}/messages?clientId=${encodeURIComponent(clientId)}`
         );
         const j = await r.json();
         if (j.success && Array.isArray(j.messages)) {
           setMessages(j.messages);
-          await fetch(`/api/chat/threads/${threadId}/read`, {
+          await chatFetch(`/api/chat/threads/${threadId}/read`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ clientId }),
@@ -307,7 +308,7 @@ export function CustomerChatProvider({
 
   const openGeneralChat = useCallback(async () => {
     if (!clientId) return;
-    const r = await fetch("/api/chat/threads", {
+    const r = await chatFetch("/api/chat/threads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId }),
@@ -340,7 +341,7 @@ export function CustomerChatProvider({
 
   const confirmSendProductLink = useCallback(async () => {
     if (!clientId || !confirmProduct) return;
-    const r = await fetch("/api/chat/threads", {
+    const r = await chatFetch("/api/chat/threads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -362,7 +363,7 @@ export function CustomerChatProvider({
     async (product: ChatProductRef) => {
       if (!clientId) return false;
       try {
-        const r = await fetch("/api/chat/threads", {
+        const r = await chatFetch("/api/chat/threads", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -392,7 +393,7 @@ export function CustomerChatProvider({
     if (!text || !activeThreadId || !clientId || sending) return;
     setSending(true);
     try {
-      const r = await fetch(`/api/chat/threads/${activeThreadId}/messages`, {
+      const r = await chatFetch(`/api/chat/threads/${activeThreadId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId, text }),
@@ -401,6 +402,8 @@ export function CustomerChatProvider({
       if (j.success && j.message) {
         setDraft("");
         setMessages((prev) => [...prev, j.message]);
+      } else {
+        console.error("Chat send failed", r.status, j);
       }
     } finally {
       setSending(false);

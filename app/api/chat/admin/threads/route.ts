@@ -3,6 +3,8 @@ import connectDB from "@/lib/mongodb";
 import ChatThread from "@/models/ChatThread";
 import { syncVisitorPublicIdForClient } from "@/lib/chatVisitorSync";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     await connectDB();
