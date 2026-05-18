@@ -3,16 +3,15 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import QRCode from "qrcode";
 import {
   FaTimes,
   FaInstagram,
   FaArrowLeft,
   FaArrowRight,
-  FaCopy,
-  FaCheck,
 } from "react-icons/fa";
-import { buildUpiPaymentUri, formatUpiAmount } from "@/lib/upi";
+import { buildUpiPaymentUri } from "@/lib/upi";
+import { PUBLIC_UPI_ID, PUBLIC_UPI_PAYEE_NAME } from "@/lib/upiConfig";
+import UpiPayInstructions from "@/components/UpiPayInstructions";
 import { getInstagramDmUrl } from "@/lib/siteContact";
 import { CHECKOUT_DRAFT_STORAGE_KEY } from "@/lib/checkoutDraft";
 import { getChatClientId } from "@/lib/chatClientId";
@@ -74,16 +73,12 @@ export default function CustomizationModal({
   });
 
   const [currentStep, setCurrentStep] = useState(product.customizable ? 1 : 1);
-  const [copied, setCopied] = useState(false);
-  const [upiQrDataUrl, setUpiQrDataUrl] = useState<string>("");
+  const [upiTxnRef] = useState(
+    () => `Order${Date.now().toString(36).slice(-6).toUpperCase()}`
+  );
 
-  const UPI_VPA = process.env.NEXT_PUBLIC_UPI_ID ?? "vishakha-c@ptyes";
-  const UPI_PAYEE_NAME =
-    process.env.NEXT_PUBLIC_UPI_PAYEE_NAME ?? "Vishakha Chaudhary";
-  const bankMeta = {
-    bankName: "State Bank of India",
-    accountName: UPI_PAYEE_NAME,
-  };
+  const UPI_VPA = PUBLIC_UPI_ID;
+  const UPI_PAYEE_NAME = PUBLIC_UPI_PAYEE_NAME;
 
   const handleInputChange = (
     section: string,
@@ -146,30 +141,12 @@ export default function CustomizationModal({
       buildUpiPaymentUri({
         payeeAddress: UPI_VPA,
         payeeName: UPI_PAYEE_NAME,
-        amount: formatUpiAmount(totalForUpi),
+        amount: totalForUpi,
         currency: "INR",
-        transactionNote: "StichKalaa",
+        transactionNote: upiTxnRef,
       }),
-    [UPI_VPA, UPI_PAYEE_NAME, totalForUpi]
+    [UPI_VPA, UPI_PAYEE_NAME, totalForUpi, upiTxnRef]
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    QRCode.toDataURL(upiPayUri, {
-      width: 220,
-      margin: 2,
-      errorCorrectionLevel: "M",
-    })
-      .then((url) => {
-        if (!cancelled) setUpiQrDataUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setUpiQrDataUrl("");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [upiPayUri]);
 
   // Keep API field in sync (orders still store whatsappNumber for legacy data).
   useEffect(() => {
@@ -200,7 +177,7 @@ export default function CustomizationModal({
     return true;
   };
 
-  /** Save checkout draft, open UPI (new tab), then send shopper to payment verification. */
+  /** Save checkout draft and send shopper to payment verification. */
   const handlePayNowUpi = () => {
     if (!validateForm()) return;
 
@@ -208,6 +185,7 @@ export default function CustomizationModal({
       version: 1 as const,
       draftStartedAt: Date.now(),
       upiPayUri,
+      upiId: UPI_VPA,
       productId: product._id,
       productName: product.name,
       productImage: product.images[0],
@@ -241,15 +219,7 @@ export default function CustomizationModal({
       return;
     }
 
-    window.open(upiPayUri, "_blank", "noopener,noreferrer");
-    window.location.href = `${window.location.origin}/payment-pending`;
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    window.location.assign(`${window.location.origin}/payment-pending`);
   };
 
   const buildInstagramOrderMessage = () => {
@@ -793,35 +763,7 @@ export default function CustomizationModal({
                 </h3>
 
                 <div className="bg-gray-50 rounded-xl p-4 mb-4">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100">
-                      <Image
-                        src={product.images[0] || "/logo.png"}
-                        alt={product.name}
-                        fill
-                        className="object-cover"
-                        sizes="64px"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-text-dark text-sm truncate">
-                        {product.name}
-                      </h4>
-                      <p className="text-xs text-text-light">
-                        Quantity: {formData.quantity}
-                      </p>
-                      {product.customizable && formData.customization.text && (
-                        <p className="text-xs text-text-light truncate">
-                          Custom: {formData.customization.text}
-                        </p>
-                      )}
-                    </div>
-                    <p className="font-medium text-text-dark text-sm">
-                      ₹{product.basePrice * formData.quantity}
-                    </p>
-                  </div>
-
-                  <div className="border-t pt-3 space-y-1.5">
+                  <div className="space-y-1.5">
                     <div className="flex justify-between text-xs">
                       <span>Subtotal:</span>
                       <span>₹{product.basePrice * formData.quantity}</span>
@@ -848,84 +790,39 @@ export default function CustomizationModal({
                   </div>
                 </div>
 
-                {/* UPI Payment Section — dynamic UPI deep link + QR */}
-                <div className="bg-white border-2 border-rose rounded-xl p-4">
-                  <h4 className="font-medium text-text-dark mb-3 text-center">
+                {/* UPI — copy ID, pay manually */}
+                <div className="bg-white border-2 border-rose rounded-xl p-4 overflow-hidden">
+                  <h4 className="font-medium text-text-dark mb-4 text-center">
                     Pay via UPI
                   </h4>
 
-                  <div className="flex flex-col items-center mb-4">
-                    {upiQrDataUrl ? (
-                      <div className="relative w-48 h-48 bg-white p-3 rounded-lg border-2 border-gray-200 mb-3">
-                        <Image
-                          src={upiQrDataUrl}
-                          alt="UPI payment QR code"
-                          fill
-                          unoptimized
-                          className="object-contain p-1"
-                          sizes="192px"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-48 h-48 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-xs text-text-light mb-3">
-                        Generating QR…
-                      </div>
-                    )}
-                    <p className="text-xs text-text-light text-center mb-3">
-                      Scan with GPay, PhonePe, Paytm, or any UPI app
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handlePayNowUpi}
-                      className="w-full max-w-xs bg-rose text-white px-4 py-3 rounded-full hover:bg-opacity-90 transition-all font-semibold text-sm text-center uppercase tracking-wide"
-                    >
-                      PAY NOW (₹{calculateTotal()})
-                    </button>
-                    {/* <button
-                      type="button"
-                      onClick={() => copyToClipboard(upiPayUri)}
-                      className="mt-2 w-full max-w-xs border-2 border-gray-200 text-text-dark px-4 py-2.5 rounded-full text-sm hover:bg-gray-50 flex items-center justify-center gap-2"
-                    >
-                      {copied ? <FaCheck size={14} /> : <FaCopy size={14} />}
-                      Copy payment link
-                    </button> */}
-                  </div>
+                  <UpiPayInstructions
+                    upiId={UPI_VPA}
+                    amount={calculateTotal()}
+                    payeeName={UPI_PAYEE_NAME}
+                    className="mb-4"
+                  />
 
-                  <details className="text-xs text-text-light space-y-2 rounded-lg bg-gray-50 p-3">
-                    <summary className="cursor-pointer font-medium text-text-dark text-sm">
-                      Manual entry (optional)
-                    </summary>
-                    <p className="mt-2">
-                      Payee VPA is not shown by default. If your app needs it,
-                      copy the payment link above — it contains the same details
-                      as the QR.
-                    </p>
-                    <div className="bg-yellow-50 rounded-lg p-3 mt-2">
-                      <p className="font-medium text-text-dark mb-1">
-                        Bank / account (reference)
-                      </p>
-                      <p>Bank: {bankMeta.bankName}</p>
-                      <p>Account name: {bankMeta.accountName}</p>
-                    </div>
-                  </details>
+                  <button
+                    type="button"
+                    onClick={handlePayNowUpi}
+                    className="w-full max-w-sm mx-auto block border-2 border-gray-200 text-text-dark px-4 py-3 rounded-full hover:bg-gray-50 transition-all font-medium text-sm text-center mb-3"
+                  >
+                    Continue to payment confirmation →
+                  </button>
 
-                  <div className="bg-blue-50 rounded-lg p-3 mt-3">
+                  <div className="bg-blue-50 rounded-lg p-3">
                     <h5 className="font-medium text-text-dark mb-1 text-sm">
                       After you pay
                     </h5>
-                    <div className="space-y-1 text-xs text-text-light">
-                      <p>
-                        • Tap <strong>PAY NOW</strong> above — UPI opens in a
-                        new tab; you&apos;ll go straight to the payment
-                        confirmation page.
-                      </p>
-                      <p>
-                        • Enter <strong>UTR and/or a screenshot</strong> (at
-                        least one) within 10 minutes.
-                      </p>
-                    </div>
+                    <p className="text-xs text-text-light">
+                      Submit your <strong>UTR and/or screenshot</strong> on the
+                      next page within 10 minutes.
+                    </p>
                   </div>
+
                 </div>
+
               </motion.div>
             )}
 

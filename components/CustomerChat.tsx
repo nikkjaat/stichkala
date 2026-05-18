@@ -26,6 +26,8 @@ import { getChatClientId } from "@/lib/chatClientId";
 import { extractProductIdFromChatUrl } from "@/lib/chatProductUrl";
 import ChatProductDetailModal from "@/components/ChatProductDetailModal";
 import CustomizationModal from "@/components/CustomizationModal";
+import UpiPayInstructions from "@/components/UpiPayInstructions";
+import { PUBLIC_UPI_ID, PUBLIC_UPI_PAYEE_NAME } from "@/lib/upiConfig";
 import { chatFetch } from "@/lib/chatFetch";
 import ChatAttachmentLightbox from "@/components/ChatAttachmentLightbox";
 import {
@@ -1326,8 +1328,8 @@ export function CustomerChatProvider({
                                         : "text-xs text-text-light"
                                     }
                                   >
-                                    This price link was replaced by a newer
-                                    offer. Use the latest offer below to pay.
+                                    This offer was replaced by a newer one.
+                                    Use the latest offer below.
                                   </p>
                                 </div>
                               ) : (
@@ -1372,20 +1374,13 @@ export function CustomerChatProvider({
                                   </p>
                                   {m.offerProductId &&
                                   m.offerRevisedPriceRupees != null ? (
-                                    <div className="flex flex-col gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          openPaymentProductView(m)
-                                        }
-                                        className={
-                                          m.sender === "user"
-                                            ? "w-full text-center py-2 rounded-xl border border-white/50 text-white text-sm font-medium hover:bg-white/10"
-                                            : "w-full text-center py-2 rounded-xl border border-rose/40 text-rose text-sm font-medium hover:bg-rose/10"
-                                        }
-                                      >
-                                        View product
-                                      </button>
+                                    <div className="flex flex-col gap-2">
+                                      <UpiPayInstructions
+                                        upiId={PUBLIC_UPI_ID}
+                                        amount={m.offerRevisedPriceRupees}
+                                        payeeName={PUBLIC_UPI_PAYEE_NAME}
+                                        compact
+                                      />
                                       <button
                                         type="button"
                                         onClick={() =>
@@ -1393,7 +1388,20 @@ export function CustomerChatProvider({
                                         }
                                         className="w-full text-center py-2 rounded-xl bg-rose text-white font-medium text-sm hover:opacity-95"
                                       >
-                                        Pay — customise &amp; UPI
+                                        Order Place
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openPaymentProductView(m)
+                                        }
+                                        className={
+                                          m.sender === "user"
+                                            ? "w-full text-center py-1.5 rounded-xl border border-white/40 text-white/90 text-xs font-medium hover:bg-white/10"
+                                            : "w-full text-center py-1.5 rounded-xl border border-gray-200 text-text-light text-xs font-medium hover:bg-gray-50"
+                                        }
+                                      >
+                                        View product
                                       </button>
                                     </div>
                                   ) : (

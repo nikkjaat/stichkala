@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -10,6 +11,8 @@ import {
   parseCheckoutDraft,
   type CheckoutDraftV1,
 } from "@/lib/checkoutDraft";
+import { formatOrderApiError } from "@/lib/orderErrorMessages";
+import RefundPolicyNotice from "@/components/RefundPolicyNotice";
 
 type Step = "question" | "form" | "failure" | "success";
 type SuccessVariant = "paid" | "failure";
@@ -28,7 +31,6 @@ export default function PaymentPendingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
-
   useEffect(() => {
     document.title = "Payment verification | StichKalaa";
   }, []);
@@ -57,11 +59,6 @@ export default function PaymentPendingPage() {
   const secondsLeft = draft
     ? Math.max(0, Math.ceil((expiresAt - now) / 1000))
     : 0;
-
-  const handleRetryUpi = useCallback(() => {
-    if (!draft?.upiPayUri) return;
-    window.open(draft.upiPayUri, "_blank", "noopener,noreferrer");
-  }, [draft]);
 
   const handleSubmitProof = async () => {
     if (!draft || expired) return;
@@ -181,11 +178,10 @@ export default function PaymentPendingPage() {
       const orderJson = await orderRes.json();
       if (!orderRes.ok || !orderJson.success) {
         setSubmitError(
-          orderJson.error === "payment_verification_expired"
-            ? "This checkout window has expired. Please start again from the product page."
-            : orderJson.error === "failure_screenshot_required"
-              ? "A screenshot is required for a failure report."
-              : orderJson.error || "Could not save your report."
+          formatOrderApiError(
+            orderJson.error as string | undefined,
+            orderJson.message as string | undefined
+          )
         );
         return;
       }
@@ -297,7 +293,7 @@ export default function PaymentPendingPage() {
   }
 
   return (
-    <div className="min-h-[70vh] max-w-lg mx-auto px-4 py-10">
+    <div className="min-h-[70vh] max-w-lg mx-auto px-4 pt-24 pb-10">
       <div className="mb-4 flex items-center justify-between gap-3">
         <button
           type="button"
@@ -325,9 +321,34 @@ export default function PaymentPendingPage() {
         <h1 className="font-serif text-2xl text-text-dark mb-2">
           Payment confirmation
         </h1>
-        <p className="text-sm text-text-light mb-4">
-          {draft.productName} · ₹{draft.totalAmount}
-        </p>
+        <RefundPolicyNotice className="mb-4" />
+
+        <div className="mb-6 p-4 rounded-2xl bg-gray-50 border border-gray-100">
+          <div className="flex gap-3 items-start min-w-0 mb-4">
+            <div className="shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-gray-200 bg-white">
+              <Image
+                src={draft.productImage || "/logo.png"}
+                alt={draft.productName}
+                width={80}
+                height={80}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-text-dark line-clamp-2">
+                {draft.productName}
+              </p>
+              <p className="text-lg font-semibold text-rose mt-1">
+                ₹{draft.totalAmount}
+              </p>
+            </div>
+          </div>
+
+          <p className="text-sm text-text-light">
+            Pay <strong className="text-text-dark">₹{draft.totalAmount}</strong> in your
+            UPI app using the ID you copied, then confirm below.
+          </p>
+        </div>
 
         <div
           className={`rounded-xl px-3 py-2 text-sm mb-6 ${
@@ -355,7 +376,7 @@ export default function PaymentPendingPage() {
             <p className="text-text-dark font-medium">
               Did you complete the payment in your UPI app?
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
                 disabled={expired}
@@ -363,14 +384,6 @@ export default function PaymentPendingPage() {
                 className="bg-rose text-white py-3 rounded-full text-sm font-medium disabled:opacity-40"
               >
                 Yes, I paid
-              </button>
-              <button
-                type="button"
-                disabled={expired}
-                onClick={handleRetryUpi}
-                className="border-2 border-gray-200 py-3 rounded-full text-sm font-medium text-text-dark hover:bg-gray-50 disabled:opacity-40"
-              >
-                Retry payment
               </button>
               <button
                 type="button"
@@ -385,10 +398,8 @@ export default function PaymentPendingPage() {
               </button>
             </div>
             <p className="text-xs text-text-light">
-              This does not confirm success automatically — we verify using the
-              UTR and/or screenshot you send. Use{" "}
-              <strong>Payment failed</strong> to send us a screenshot if
-              something went wrong.
+              After paying in your UPI app, confirm here. Use{" "}
+              <strong>Payment failed</strong> if something went wrong.
             </p>
           </div>
         )}

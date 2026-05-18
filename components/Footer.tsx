@@ -113,6 +113,14 @@ export default function Footer() {
                   Contact
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/policies"
+                  className="hover:text-rose transition-colors"
+                >
+                  Returns &amp; refunds policy
+                </Link>
+              </li>
             </ul>
           </div>
 

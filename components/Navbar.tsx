@@ -155,7 +155,7 @@ export default function Navbar() {
               <div className="relative h-10 w-[70px] sm:h-12 sm:w-14 shrink-0">
                 <Image
                   src="/logo-512.png"
-                  alt="StichKala logo"
+                  alt="StichKalaa logo"
                   fill
                   className="object-contain"
                   sizes="70px"
@@ -163,7 +163,7 @@ export default function Navbar() {
                 />
               </div>
               <span className="font-serif text-xl sm:text-2xl md:text-3xl text-text-dark ml-2 sm:ml-3">
-                StichKala
+                StichKalaa
               </span>
             </motion.div>
           </Link>

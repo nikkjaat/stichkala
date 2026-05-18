@@ -5,7 +5,6 @@ import ChatThread from "@/models/ChatThread";
 import ChatMessage from "@/models/ChatMessage";
 import Product from "@/models/Product";
 import mongoose from "mongoose";
-import Razorpay from "razorpay";
 import crypto from "crypto";
 import { serializeChatMessage } from "@/lib/chatMessageSerialize";
 import { fireWebPushAfterAdminMessage } from "@/lib/sendChatWebPush";
@@ -21,16 +20,11 @@ async function requireAdmin(): Promise<boolean> {
   return verifySessionCookieValue(token);
 }
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
-
 function makeToken() {
   return crypto.randomBytes(18).toString("hex");
 }
 
-/** POST — admin creates temporary negotiated Razorpay checkout + payment bubble */
+/** POST — admin sends negotiated UPI price offer (copy ID in chat, no payment link) */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -97,28 +91,8 @@ export async function POST(
     const token = makeToken();
     const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
 
-    let rzpOrderId: string;
-    try {
-      const rzp = await razorpay.orders.create({
-        amount: Math.round(revisedRounded * 100),
-        currency: "INR",
-        receipt: `chat_${threadId.slice(-8)}_${Date.now()}`,
-        notes: {
-          chatThreadId: String(thread._id),
-          chatPayToken: token,
-        },
-      });
-      rzpOrderId = rzp.id;
-    } catch (err) {
-      console.error(err);
-      return NextResponse.json(
-        { success: false, error: "Could not create payment session" },
-        { status: 500 }
-      );
-    }
-
     thread.payOfferToken = token;
-    thread.payOfferRazorpayOrderId = rzpOrderId;
+    thread.payOfferRazorpayOrderId = undefined;
     thread.payOfferAmountRupees = revisedRounded;
     thread.payOfferListPriceRupees = listPriceRupees;
     thread.payOfferExpiresAt = expiresAt;
@@ -127,7 +101,7 @@ export async function POST(
     thread.lastMessageAt = new Date();
     await thread.save();
 
-    const label = `Revise price — ${productName}: list ₹${listPriceRupees} → pay ₹${revisedRounded}. Expires ${expiresAt.toLocaleString("en-IN")}.`;
+    const label = `Revise price — ${productName}: list ₹${listPriceRupees} → pay ₹${revisedRounded} via UPI. Copy the UPI ID below and confirm payment. Expires ${expiresAt.toLocaleString("en-IN")}.`;
     const msg = await ChatMessage.create({
       threadId: thread._id,
       sender: "admin",
@@ -155,7 +129,6 @@ export async function POST(
     return NextResponse.json({
       success: true,
       payToken: token,
-      razorpayOrderId: rzpOrderId,
       message: serializeChatMessage(
         msg.toObject() as unknown as Parameters<typeof serializeChatMessage>[0]
       ),

@@ -4,8 +4,9 @@ import Order from "@/models/Order";
 import Product from "@/models/Product";
 import ChatThread from "@/models/ChatThread";
 import type { IChatThread } from "@/models/ChatThread";
-import Razorpay from "razorpay";
 import mongoose, { type HydratedDocument } from "mongoose";
+import { createRazorpayClient, isRazorpayConfigured } from "@/lib/razorpayConfig";
+import { isValidNegotiatedChatTotal } from "@/lib/chatCheckoutTotal";
 import {
   sendAdminNewOrderAlert,
   sendOrderConfirmation,
@@ -15,11 +16,6 @@ import {
   appendOrderReceivedAdminChat,
   appendOrderReceivedAdminChatForClient,
 } from "@/lib/postOrderAdminChat";
-
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
 
 export async function GET() {
   try {
@@ -290,7 +286,18 @@ export async function POST(request: NextRequest) {
 
     // Create Razorpay order if payment method is online
     if (orderPayload.paymentMethod === "online") {
+      if (!isRazorpayConfigured()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "payment_unavailable",
+            message: "Online payment is not configured. Please use UPI or contact us.",
+          },
+          { status: 503 }
+        );
+      }
       try {
+        const razorpay = createRazorpayClient();
         const razorpayOrder = await razorpay.orders.create({
           amount: totalAmount * 100, // Amount in paise
           currency: "INR",

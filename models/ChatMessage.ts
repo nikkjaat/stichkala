@@ -15,7 +15,7 @@ export interface IChatMessage {
   kind: ChatMessageKind;
   /** Plain text, product URL, attachment URL (image/file), or short label for payment bubble */
   body: string;
-  /** For payment_cta — user opens /chat-pay/[payToken]; never show Razorpay ids in body */
+  /** For payment_cta — UPI copy + payment confirmation via payToken */
   payToken?: string;
   /** For track_order — opens /track?order=… (no URL in body text). */
   orderNumber?: string;

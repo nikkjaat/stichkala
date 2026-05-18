@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import Script from "next/script";
 import { motion } from "framer-motion";
+import RefundPolicyNotice from "@/components/RefundPolicyNotice";
+import { formatOrderApiError } from "@/lib/orderErrorMessages";
 
 type Session = {
   amountRupees: number;
@@ -15,8 +18,33 @@ type Session = {
 
 declare global {
   interface Window {
-    Razorpay?: new (opts: Record<string, unknown>) => { open: () => void };
+    Razorpay?: new (opts: Record<string, unknown>) => {
+      open: () => void;
+      on: (event: string, handler: (r: { error?: { description?: string } }) => void) => void;
+    };
   }
+}
+
+function waitForRazorpay(maxMs = 12000): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && window.Razorpay) {
+      resolve(true);
+      return;
+    }
+    const start = Date.now();
+    const tick = () => {
+      if (window.Razorpay) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - start > maxMs) {
+        resolve(false);
+        return;
+      }
+      window.setTimeout(tick, 80);
+    };
+    tick();
+  });
 }
 
 export default function ChatPayPage() {
@@ -24,6 +52,7 @@ export default function ChatPayPage() {
   const token = decodeURIComponent(String(params?.token ?? ""));
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [razorpayReady, setRazorpayReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -50,7 +79,18 @@ export default function ChatPayPage() {
         const j = await r.json();
         if (cancelled) return;
         if (!j.success) {
-          setError(j.error || "Could not load payment");
+          setError(
+            formatOrderApiError(
+              j.error as string | undefined,
+              j.message as string | undefined
+            )
+          );
+          return;
+        }
+        if (!j.keyId?.trim()) {
+          setError(
+            "Online checkout is not configured. Use Pay — customise & UPI in chat instead."
+          );
           return;
         }
         setSession({
@@ -93,6 +133,11 @@ export default function ChatPayPage() {
         name: "StichKalaa",
         description: session.productName,
         theme: { color: "#fb7185" },
+        prefill: {
+          name,
+          email: form.email.trim() || undefined,
+          contact: phone,
+        },
         handler: async (response: {
           razorpay_payment_id: string;
           razorpay_order_id: string;
@@ -132,12 +177,19 @@ export default function ChatPayPage() {
           ondismiss: () => setBusy(false),
         },
       });
+      rzp.on("payment.failed", (resp) => {
+        setBusy(false);
+        setError(
+          resp.error?.description ||
+            "Payment failed or was cancelled. You can try again."
+        );
+      });
       rzp.open();
     } catch {
       setBusy(false);
       setError("Could not start Razorpay checkout.");
     }
-  }, [session, form, token]);
+  }, [session, form, token, razorpayReady]);
 
   if (done) {
     return (
@@ -261,6 +313,7 @@ export default function ChatPayPage() {
                 setForm((f) => ({ ...f, pincode: e.target.value }))
               }
             />
+            <RefundPolicyNotice compact />
             <button
               type="button"
               disabled={busy}

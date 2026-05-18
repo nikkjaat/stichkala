@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import UpiPayInstructions from "@/components/UpiPayInstructions";
+import { PUBLIC_UPI_ID, PUBLIC_UPI_PAYEE_NAME } from "@/lib/upiConfig";
 
 export type ChatProductDetail = {
   _id: string;
@@ -33,9 +35,9 @@ export default function ChatProductDetailModal({
   productId,
   threadId,
   clientId,
-  /** When true, negotiated price still shows but Razorpay CTA is hidden (use chat “Pay now”). */
+  /** When true, negotiated price still shows but pay CTA is hidden (use chat offer). */
   hidePayCta = false,
-  /** When set with negotiated offer, primary pay uses UPI customise flow instead of Razorpay. */
+  /** Opens customise + payment confirmation for negotiated UPI offer. */
   onNegotiatedUpiPay,
   onClose,
 }: {
@@ -300,47 +302,30 @@ export default function ChatProductDetailModal({
                         </span>
                       </>
                     )}
-                    . Customise, enter your address, then pay with UPI (no card
-                    checkout).
                   </p>
                   <p className="text-[11px] text-text-light">
                     Offer valid until{" "}
                     {new Date(negotiatedOffer.expiresAt).toLocaleString("en-IN")}
                     .
                   </p>
+                  <UpiPayInstructions
+                    upiId={PUBLIC_UPI_ID}
+                    amount={negotiatedOffer.amountRupees}
+                    payeeName={PUBLIC_UPI_PAYEE_NAME}
+                  />
                   <button
                     type="button"
                     onClick={onNegotiatedUpiPay}
                     className="block w-full text-center py-3 rounded-xl bg-rose text-white font-semibold text-sm hover:opacity-95"
                   >
-                    Pay agreed price — customise &amp; UPI
+                    Payment confirmation
                   </button>
-                </div>
-              )}
-              {negotiatedOffer && !hidePayCta && !onNegotiatedUpiPay && (
-                <div className="rounded-xl border border-rose/30 bg-rose/5 p-4 space-y-3">
-                  <p className="text-sm text-text-dark">
-                    Pay the agreed amount of{" "}
-                    <strong>₹{negotiatedOffer.amountRupees}</strong> with Razorpay.
-                  </p>
-                  <p className="text-[11px] text-text-light">
-                    Offer valid until{" "}
-                    {new Date(negotiatedOffer.expiresAt).toLocaleString("en-IN")}
-                    .
-                  </p>
-                  <a
-                    href={`/chat-pay/${encodeURIComponent(negotiatedOffer.payToken)}`}
-                    className="block w-full text-center py-3 rounded-xl bg-rose text-white font-semibold text-sm hover:opacity-95"
-                  >
-                    Pay now — ₹{negotiatedOffer.amountRupees}
-                  </a>
                 </div>
               )}
               {negotiatedOffer && hidePayCta && (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-text-light">
-                  Use <strong className="text-text-dark">Pay</strong> in the chat
-                  message when you are ready to pay ₹
-                  {negotiatedOffer.amountRupees} (customise &amp; UPI).
+                  Use <strong className="text-text-dark">Payment confirmation</strong>{" "}
+                  in the chat offer to pay ₹{negotiatedOffer.amountRupees} via UPI.
                 </div>
               )}
             </>

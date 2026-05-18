@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import ChatThread from "@/models/ChatThread";
 import Product from "@/models/Product";
+import { getRazorpayPublicKey, isRazorpayConfigured } from "@/lib/razorpayConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,18 @@ export async function GET(
       );
     }
 
+    if (!isRazorpayConfigured()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "payment_unavailable",
+          message:
+            "Card/UPI checkout is temporarily unavailable. Ask the shop to resend the offer or pay via chat UPI.",
+        },
+        { status: 503 }
+      );
+    }
+
     const product = thread.payOfferProductId
       ? await Product.findById(thread.payOfferProductId).lean()
       : null;
@@ -55,7 +68,7 @@ export async function GET(
             ? Math.round(Number(product.basePrice) * 100) / 100
             : undefined,
       razorpayOrderId: thread.payOfferRazorpayOrderId,
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
+      keyId: getRazorpayPublicKey(),
       productName: product?.name || thread.productName || "Product",
       threadId: String(thread._id),
     });

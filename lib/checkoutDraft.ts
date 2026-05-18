@@ -5,6 +5,8 @@ export type CheckoutDraftV1 = {
   version: 1;
   draftStartedAt: number;
   upiPayUri: string;
+  /** Merchant VPA shown for copy-paste (e.g. name@ptyes). */
+  upiId: string;
   productId: string;
   productName: string;
   productImage?: string;
